@@ -1,3 +1,5 @@
+LET summit_distance = 5 BP;
+
 LOAD TRACK "data_examples/binding_rep1_demo.narrowPeak"
     FORMAT NARROWPEAK
     EVIDENCE BINDING
@@ -28,7 +30,7 @@ CONSENSUS FROM [filtered_1, filtered_2]
     ANCHOR filtered_1
     MIN_SUPPORT 2
     MIN_RECIPROCAL_OVERLAP 50 %
-    MAX_SUMMIT_DISTANCE 5 BP
+    MAX_SUMMIT_DISTANCE summit_distance
     AS consensus
     WHERE SUPPORT_COUNT >= 2;
 

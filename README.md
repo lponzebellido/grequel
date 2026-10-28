@@ -164,22 +164,29 @@ USE ANNOTATION annot;
 ### 1.1 Reusable scalar constants (`LET`)
 
 Declare immutable string or numeric values once and reuse them in motif
-patterns and conditions:
+operands, conditions, slices, and distance clauses:
 
 ```sql
-LET start_pattern = "ATG";
-LET minimum_length = 15 BP;
-LET frame_width = 3;
+LET promoter_pattern = "TATA[AT]A[AT]";
+LET search_radius = 250 BP;
+LET prefix_start = 0;
+LET prefix_end = 4;
 
-FIND MOTIF start_pattern AS starts
-    WHERE LENGTH >= minimum_length
-      AND START MOD frame_width = 0;
+FIND MOTIF promoter_pattern
+    WITHIN search_radius UPSTREAM FROM GENE
+    AS candidates
+    WHERE SLICE ORIENTED_SEQUENCE FROM prefix_start TO prefix_end = "TATA";
 ```
 
 Constants are top-level declarations and must appear before use. Numeric
 constants retain their optional `BP`, `KB`, `MB`, or `%` unit; the property
 using the constant still enforces its normal type and unit rules. Constants do
-not perform textual macro expansion and cannot be redefined.
+not perform textual macro expansion and cannot be redefined. They are accepted
+as motif operands, condition values, `MOD` divisors, `SLICE` bounds, analysis
+windows, and genomic distances in `FIND`, `DEFINE PROMOTERS`, `DEFINE MODULE`,
+`NEAR`, and `CONSENSUS`. A distance clause that normally requires a unit also
+requires its constant to supply one, either in the declaration or at the use
+site; slice bounds must resolve to unitless whole numbers.
 
 ### 2. Motif Searching & Spatial Conditions (`FIND MOTIF`)
 
@@ -583,21 +590,22 @@ ExportStmt         ::= EXPORT ID TO STRING FORMAT (BED | GFF3 | TSV) SEMICOLON
 LetStmt            ::= LET ID "=" ScalarLiteral SEMICOLON
 ScalarLiteral      ::= STRING | ("-")? (NUM | FLOAT) Unit
                      | ("-")? (NUM | FLOAT) PERCENT
+DistanceOperand    ::= (NUM | FLOAT) RequiredUnit | ID RequiredUnit?
+OptionalDistance  ::= (NUM | FLOAT) Unit | ID Unit
 DefinePromotersStmt ::= DEFINE PROMOTERS OF (GENE | TSS | ID) FROM TSS
-                        UPSTREAM (NUM | FLOAT) RequiredUnit
-                        DOWNSTREAM (NUM | FLOAT) RequiredUnit AS ID SEMICOLON
+                        UPSTREAM DistanceOperand
+                        DOWNSTREAM DistanceOperand AS ID SEMICOLON
 DefineModuleStmt   ::= DEFINE MODULE FROM ID WITH ID
-                       SPACING (NUM | FLOAT) RequiredUnit TO
-                               (NUM | FLOAT) RequiredUnit
+                       SPACING DistanceOperand TO DistanceOperand
                        ORDER (ANY | AS_WRITTEN)
                        ORIENTATION (ANY | SAME | OPPOSITE) AS ID SEMICOLON
 TranslateStmt      ::= TRANSLATE ID CODE NUM FRAME NUM AS ID SEMICOLON
 
-AnalyzeStmt        ::= ANALYZE (GC_CONTENT | CPG_ISLANDS) (WINDOW (NUM | FLOAT) Unit)? AliasOpt WhereClause SEMICOLON
+AnalyzeStmt        ::= ANALYZE (GC_CONTENT | CPG_ISLANDS) (WINDOW OptionalDistance)? AliasOpt WhereClause SEMICOLON
 
 FindStmt           ::= FIND MOTIF (STRING | ID) FindOpts AliasOpt WhereClause SEMICOLON
 FindOpts           ::= FindOpt FindOpts | λ
-FindOpt            ::= WITHIN (NUM | FLOAT) Unit Direction FROM EntityRef EntityName
+FindOpt            ::= WITHIN OptionalDistance Direction FROM EntityRef EntityName
                      | STRAND StrandType
                      | CHR STRING
                      | CAPTURES "[" STRING ("," STRING)* "]"
@@ -614,13 +622,13 @@ SetOperationStmt   ::= (INTERSECT | UNION) EntityRef AND EntityRef AliasOpt Wher
                      | EXCEPT EntityRef FROM EntityRef AliasOpt WhereClause SEMICOLON
                      | OVERLAPS EntityRef WITH EntityRef AliasOpt WhereClause SEMICOLON
                      | NEAR EntityRef TO EntityRef WITHIN
-                         (NUM | FLOAT) RequiredUnit AliasOpt WhereClause SEMICOLON
+                         DistanceOperand AliasOpt WhereClause SEMICOLON
 
 ConsensusStmt      ::= CONSENSUS FROM "[" ID ("," ID)+ "]"
                        ANCHOR ID MIN_SUPPORT NUM ConsensusCriterion*
                        AS ID WhereClause SEMICOLON
 ConsensusCriterion ::= MIN_RECIPROCAL_OVERLAP (NUM | FLOAT) PERCENT
-                     | MAX_SUMMIT_DISTANCE (NUM | FLOAT) RequiredUnit
+                     | MAX_SUMMIT_DISTANCE DistanceOperand
 
 CountStmt          ::= COUNT EntityRef IN EntityRef AS ID WhereClause SEMICOLON
 
@@ -664,7 +672,7 @@ StringValue        ::= SequenceProperty | CAPTURE CaptureRef
 StringExpression   ::= StringValue
                      | SLICE StringValue FROM SliceBound TO SliceBound
 CaptureRef         ::= NUM | STRING
-SliceBound         ::= NUM | "-" NUM | END
+SliceBound         ::= NUM | "-" NUM | END | ID
 SequenceRelOp      ::= "=" | STARTS_WITH | ENDS_WITH | CONTAINS
 SimilarityRefOpt   ::= TO ID | λ
 RelOp              ::= ">" | "<" | ">=" | "<=" | "="
@@ -734,7 +742,7 @@ track, transcript, and strand examples use small synthetic fixtures. See
 | `15_strands.grql` | Compare reference and strand-oriented sequence | `SEQUENCE`, `ORIENTED_SEQUENCE` |
 | `16_translate.grql` | Translate intervals under two genetic codes | `TRANSLATE`, `PROTEIN_SEQUENCE` |
 | `17_captures.grql` | Name and filter regular-expression groups | `CAPTURES`, `CAPTURE` |
-| `18_constants.grql` | Reuse patterns and thresholds | `LET` |
+| `18_constants.grql` | Reuse patterns, thresholds, and slice bounds | `LET` |
 
 ---
 

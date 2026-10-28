@@ -1,18 +1,23 @@
+LET search_radius = 200 BP;
+LET first_base = 0;
+LET first_codon_end = 3;
+LET terminal_codon_start = -3;
+
 LOAD SEQUENCE "data_examples/ecoli2.fna" AS genome;
 
 FIND MOTIF "TATA[AT]A[AT]" STRAND POSITIVE AS anchors;
 
 FIND MOTIF "ATG(?:(?!TAA|TAG|TGA)[ACGT]{3})*(?:TAA|TAG|TGA)"
-  WITHIN 200 BP DOWNSTREAM FROM anchors
+  WITHIN search_radius DOWNSTREAM FROM anchors
   STRAND POSITIVE
   AS orfs
   WHERE LENGTH >= 15 BP
     AND LENGTH MOD 3 = 0
-    AND SLICE ORIENTED_SEQUENCE FROM 0 TO 3 = "ATG"
+    AND SLICE ORIENTED_SEQUENCE FROM first_base TO first_codon_end = "ATG"
     AND (
-      SLICE ORIENTED_SEQUENCE FROM -3 TO END = "TAA"
-      OR SLICE ORIENTED_SEQUENCE FROM -3 TO END = "TAG"
-      OR SLICE ORIENTED_SEQUENCE FROM -3 TO END = "TGA"
+      SLICE ORIENTED_SEQUENCE FROM terminal_codon_start TO END = "TAA"
+      OR SLICE ORIENTED_SEQUENCE FROM terminal_codon_start TO END = "TAG"
+      OR SLICE ORIENTED_SEQUENCE FROM terminal_codon_start TO END = "TGA"
     );
 
 EXPORT orfs TO "orfs.tsv" FORMAT TSV;

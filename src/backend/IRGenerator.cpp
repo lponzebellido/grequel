@@ -166,8 +166,12 @@ void IRGenerator::visit(DefinePromotersStmtNode *node) {
   IRInstruction define;
   define.opcode = IROpCode::DEFINE_PROMOTERS;
   define.arg1 = node->source;
-  define.arg2 = node->upstreamValue + " " + node->upstreamUnit;
-  define.arg3 = node->downstreamValue + " " + node->downstreamUnit;
+  define.arg2 = node->upstreamValue;
+  if (!node->upstreamUnit.empty())
+    define.arg2 += " " + node->upstreamUnit;
+  define.arg3 = node->downstreamValue;
+  if (!node->downstreamUnit.empty())
+    define.arg3 += " " + node->downstreamUnit;
   define.arg4 = node->alias;
   instructions.push_back(define);
 

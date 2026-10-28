@@ -1,3 +1,6 @@
+LET upstream_window = 60 BP;
+LET downstream_window = 20 BP;
+
 LOAD SEQUENCE "data_examples/ecoli2.fna" AS genome;
 LOAD ANNOTATION "data_examples/genomic.gff" AS annotation;
 
@@ -6,8 +9,8 @@ EXTRACT GENE AS thra
 
 DEFINE PROMOTERS OF thra
     FROM TSS
-    UPSTREAM 60 BP
-    DOWNSTREAM 20 BP
+    UPSTREAM upstream_window
+    DOWNSTREAM downstream_window
     AS promoters;
 
 EXPORT promoters TO "promoters.bed" FORMAT BED;

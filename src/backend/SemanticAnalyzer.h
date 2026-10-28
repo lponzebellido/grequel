@@ -19,6 +19,11 @@ private:
   double parseValue(const std::string &val);
   std::string resolveConstant(const std::string &value) const;
   bool validateConstantReference(const std::string &value);
+  bool parseGenomicDistance(const std::string &value,
+                            const std::string &unit,
+                            const std::string &label, bool requireUnit,
+                            long double &basePairs,
+                            bool pluralWholeNumbers = false);
 
 public:
   SemanticAnalyzer(SymbolTable &symTab);

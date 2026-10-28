@@ -40,6 +40,24 @@ void Parser::consume(TokenType type, const std::string &message) {
   throw std::runtime_error("Parse error");
 }
 
+void Parser::parseDistance(std::string &value, std::string &unit,
+                           bool requireUnit,
+                           const std::string &valueMessage,
+                           const std::string &unitMessage) {
+  if (!match(TokenType::NUM) && !match(TokenType::FLOAT) &&
+      !match(TokenType::ID)) {
+    reportError(peek(), valueMessage);
+    throw std::runtime_error("Parse error");
+  }
+  value = previous().lexeme;
+  if (match(TokenType::BP) || match(TokenType::KB) || match(TokenType::MB)) {
+    unit = previous().lexeme;
+  } else if (requireUnit && tokens[current - 1].type != TokenType::ID) {
+    reportError(peek(), unitMessage);
+    throw std::runtime_error("Parse error");
+  }
+}
+
 void Parser::reportError(const Token &token, const std::string &message) {
   hasError = true;
   std::cerr << "Syntax Error at L" << token.line << ":C" << token.column
@@ -213,32 +231,19 @@ std::unique_ptr<DefinePromotersStmtNode> Parser::parseDefinePromoters() {
   consume(TokenType::FROM, "Expected 'FROM TSS' after the promoter source.");
   consume(TokenType::TSS, "Expected 'TSS' after FROM.");
   consume(TokenType::UPSTREAM, "Expected 'UPSTREAM' after FROM TSS.");
-  if (!match(TokenType::NUM) && !match(TokenType::FLOAT)) {
-    reportError(peek(), "Expected an upstream distance.");
-    throw std::runtime_error("Parse error");
-  }
-  const std::string upstreamValue = previous().lexeme;
-  if (!match(TokenType::BP) && !match(TokenType::KB) &&
-      !match(TokenType::MB)) {
-    reportError(peek(), "Expected BP, KB, or MB after the upstream distance.");
-    throw std::runtime_error("Parse error");
-  }
-  const std::string upstreamUnit = previous().lexeme;
+  std::string upstreamValue;
+  std::string upstreamUnit;
+  parseDistance(upstreamValue, upstreamUnit, true,
+                "Expected an upstream distance or constant.",
+                "Expected BP, KB, or MB after the upstream distance.");
 
   consume(TokenType::DOWNSTREAM,
           "Expected 'DOWNSTREAM' after the upstream window.");
-  if (!match(TokenType::NUM) && !match(TokenType::FLOAT)) {
-    reportError(peek(), "Expected a downstream distance.");
-    throw std::runtime_error("Parse error");
-  }
-  const std::string downstreamValue = previous().lexeme;
-  if (!match(TokenType::BP) && !match(TokenType::KB) &&
-      !match(TokenType::MB)) {
-    reportError(peek(),
+  std::string downstreamValue;
+  std::string downstreamUnit;
+  parseDistance(downstreamValue, downstreamUnit, true,
+                "Expected a downstream distance or constant.",
                 "Expected BP, KB, or MB after the downstream distance.");
-    throw std::runtime_error("Parse error");
-  }
-  const std::string downstreamUnit = previous().lexeme;
 
   consume(TokenType::AS, "Expected 'AS' after the promoter window.");
   consume(TokenType::ID, "Expected an alias after AS.");
@@ -270,33 +275,19 @@ std::unique_ptr<DefineModuleStmtNode> Parser::parseDefineModule() {
 
   consume(TokenType::SPACING,
           "Expected 'SPACING' after the module member aliases.");
-  if (!match(TokenType::NUM) && !match(TokenType::FLOAT)) {
-    reportError(peek(), "Expected a minimum module spacing.");
-    throw std::runtime_error("Parse error");
-  }
-  const std::string minimumSpacingValue = previous().lexeme;
-  if (!match(TokenType::BP) && !match(TokenType::KB) &&
-      !match(TokenType::MB)) {
-    reportError(peek(),
+  std::string minimumSpacingValue;
+  std::string minimumSpacingUnit;
+  parseDistance(minimumSpacingValue, minimumSpacingUnit, true,
+                "Expected a minimum module spacing or constant.",
                 "Expected BP, KB, or MB after the minimum module spacing.");
-    throw std::runtime_error("Parse error");
-  }
-  const std::string minimumSpacingUnit = previous().lexeme;
 
   consume(TokenType::TO,
           "Expected 'TO' between the minimum and maximum module spacing.");
-  if (!match(TokenType::NUM) && !match(TokenType::FLOAT)) {
-    reportError(peek(), "Expected a maximum module spacing.");
-    throw std::runtime_error("Parse error");
-  }
-  const std::string maximumSpacingValue = previous().lexeme;
-  if (!match(TokenType::BP) && !match(TokenType::KB) &&
-      !match(TokenType::MB)) {
-    reportError(peek(),
+  std::string maximumSpacingValue;
+  std::string maximumSpacingUnit;
+  parseDistance(maximumSpacingValue, maximumSpacingUnit, true,
+                "Expected a maximum module spacing or constant.",
                 "Expected BP, KB, or MB after the maximum module spacing.");
-    throw std::runtime_error("Parse error");
-  }
-  const std::string maximumSpacingUnit = previous().lexeme;
 
   consume(TokenType::ORDER, "Expected 'ORDER' after the spacing range.");
   if (!match(TokenType::ANY) && !match(TokenType::AS_WRITTEN)) {
@@ -493,17 +484,8 @@ std::unique_ptr<FindStmtNode> Parser::parseFind() {
     auto opt = std::unique_ptr<FindOptNode>(new FindOptNode());
     if (match(TokenType::WITHIN)) {
       opt->type = "WITHIN";
-      if (match(TokenType::NUM) || match(TokenType::FLOAT)) {
-        opt->value1 = previous().lexeme;
-      } else {
-        reportError(peek(), "Expected a number for WITHIN.");
-        throw std::runtime_error("Parse error");
-      }
-
-      if (match(TokenType::BP) || match(TokenType::KB) ||
-          match(TokenType::MB)) {
-        opt->value2 = previous().lexeme;
-      }
+      parseDistance(opt->value1, opt->value2, false,
+                    "Expected a distance or constant for WITHIN.", "");
 
       if (match(TokenType::UPSTREAM) || match(TokenType::DOWNSTREAM)) {
         opt->value3 = previous().lexeme;
@@ -728,19 +710,12 @@ std::unique_ptr<SetOpStmtNode> Parser::parseSetOperation() {
           reportError(previous(), "Duplicate MAX_SUMMIT_DISTANCE clause.");
           throw std::runtime_error("Parse error");
         }
-        if (!match(TokenType::NUM) && !match(TokenType::FLOAT)) {
-          reportError(peek(),
-                      "Expected a distance after MAX_SUMMIT_DISTANCE.");
-          throw std::runtime_error("Parse error");
-        }
-        maximumSummitDistanceValue = previous().lexeme;
-        if (!match(TokenType::BP) && !match(TokenType::KB) &&
-            !match(TokenType::MB)) {
-          reportError(peek(), "Expected BP, KB, or MB after "
-                              "MAX_SUMMIT_DISTANCE.");
-          throw std::runtime_error("Parse error");
-        }
-        maximumSummitDistanceUnit = previous().lexeme;
+        parseDistance(maximumSummitDistanceValue,
+                      maximumSummitDistanceUnit, true,
+                      "Expected a distance or constant after "
+                      "MAX_SUMMIT_DISTANCE.",
+                      "Expected BP, KB, or MB after "
+                      "MAX_SUMMIT_DISTANCE.");
       }
     }
     consume(TokenType::AS, "Expected 'AS' after the CONSENSUS threshold.");
@@ -803,18 +778,9 @@ std::unique_ptr<SetOpStmtNode> Parser::parseSetOperation() {
       if (op == "NEAR") {
         consume(TokenType::WITHIN,
                 "Expected 'WITHIN' after the NEAR reference entity.");
-        if (!match(TokenType::NUM) && !match(TokenType::FLOAT)) {
-          reportError(peek(), "Expected a maximum distance after WITHIN.");
-          throw std::runtime_error("Parse error");
-        }
-        distanceValue = previous().lexeme;
-        if (!match(TokenType::BP) && !match(TokenType::KB) &&
-            !match(TokenType::MB)) {
-          reportError(peek(),
+        parseDistance(distanceValue, distanceUnit, true,
+                      "Expected a maximum distance or constant after WITHIN.",
                       "Expected BP, KB, or MB after the NEAR distance.");
-          throw std::runtime_error("Parse error");
-        }
-        distanceUnit = previous().lexeme;
       }
       std::string alias;
       if (match(TokenType::AS)) {
@@ -1084,6 +1050,8 @@ std::unique_ptr<SimpleConditionNode> Parser::parseSimpleCondition() {
     auto parseSliceBound = [this](const std::string &position) {
       if (match(TokenType::END))
         return previous().lexeme;
+      if (match(TokenType::ID))
+        return previous().lexeme;
       std::string bound;
       if (match(TokenType::MINUS))
         bound = previous().lexeme;
@@ -1185,15 +1153,11 @@ std::unique_ptr<AnalyzeStmtNode> Parser::parseAnalyze() {
 
   std::string windowSize;
   if (match(TokenType::WINDOW)) {
-    if (match(TokenType::NUM) || match(TokenType::FLOAT)) {
-      windowSize = previous().lexeme;
-      if (match(TokenType::BP) || match(TokenType::KB) || match(TokenType::MB)) {
-        windowSize += " " + previous().lexeme;
-      }
-    } else {
-      reportError(peek(), "Expected window size (number) after WINDOW.");
-      throw std::runtime_error("Parse error");
-    }
+    std::string windowUnit;
+    parseDistance(windowSize, windowUnit, false,
+                  "Expected a window size or constant after WINDOW.", "");
+    if (!windowUnit.empty())
+      windowSize += " " + windowUnit;
   }
 
   std::string alias;

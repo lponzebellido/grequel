@@ -82,6 +82,68 @@ bool SemanticAnalyzer::validateConstantReference(const std::string &value) {
   return false;
 }
 
+bool SemanticAnalyzer::parseGenomicDistance(const std::string &value,
+                                            const std::string &unit,
+                                            const std::string &label,
+                                            bool requireUnit,
+                                            long double &basePairs,
+                                            bool pluralWholeNumbers) {
+  if (!validateConstantReference(value))
+    return false;
+
+  std::string numeric = resolveConstant(value);
+  std::string embeddedUnit;
+  const size_t separator = numeric.find(' ');
+  if (separator != std::string::npos) {
+    embeddedUnit = numeric.substr(separator + 1);
+    numeric = numeric.substr(0, separator);
+  }
+  if (!unit.empty() && !embeddedUnit.empty()) {
+    reportError(label + " cannot add a unit to a unit-bearing constant.");
+    return false;
+  }
+  const std::string effectiveUnit = unit.empty() ? embeddedUnit : unit;
+
+  char *remaining = nullptr;
+  errno = 0;
+  const long double number = std::strtold(numeric.c_str(), &remaining);
+  if (errno == ERANGE || remaining == numeric.c_str() ||
+      *remaining != '\0' || !std::isfinite(number) || number < 0.0L) {
+    reportError(label + " must be a finite, non-negative genomic distance "
+                "within the coordinate range.");
+    return false;
+  }
+  if (requireUnit && effectiveUnit.empty()) {
+    reportError(label + " requires BP, KB, or MB.");
+    return false;
+  }
+  if (!effectiveUnit.empty() && effectiveUnit != "BP" &&
+      effectiveUnit != "KB" && effectiveUnit != "MB") {
+    reportError(label + " requires BP, KB, or MB.");
+    return false;
+  }
+
+  const long double factor = effectiveUnit == "MB" ? 1000000.0L
+                             : effectiveUnit == "KB" ? 1000.0L
+                                                       : 1.0L;
+  basePairs = number * factor;
+  if (!std::isfinite(basePairs) ||
+      basePairs >=
+          static_cast<long double>(std::numeric_limits<size_t>::max())) {
+    reportError(label + " must be a finite, non-negative genomic distance "
+                "within the coordinate range.");
+    return false;
+  }
+  if (!resolvesToWholeBasePairs(basePairs)) {
+    reportError(label +
+                (pluralWholeNumbers
+                     ? " must resolve to whole numbers of base pairs."
+                     : " must resolve to a whole number of base pairs."));
+    return false;
+  }
+  return true;
+}
+
 void SemanticAnalyzer::analyze(ProgramNode *node) {
   if (node) {
     node->accept(*this);
@@ -206,11 +268,16 @@ void SemanticAnalyzer::visit(DefinePromotersStmtNode *node) {
                 symbolTable.typeOf(node->source) + ".");
   }
 
-  const double upstream = parseValue(node->upstreamValue);
-  const double downstream = parseValue(node->downstreamValue);
-  if (upstream < 0.0 || downstream < 0.0) {
-    reportError("Promoter distances cannot be negative.");
-  } else if (upstream == 0.0 && downstream == 0.0) {
+  long double upstream = 0.0L;
+  long double downstream = 0.0L;
+  const bool upstreamValid = parseGenomicDistance(
+      node->upstreamValue, node->upstreamUnit,
+      "DEFINE PROMOTERS upstream distance", true, upstream);
+  const bool downstreamValid = parseGenomicDistance(
+      node->downstreamValue, node->downstreamUnit,
+      "DEFINE PROMOTERS downstream distance", true, downstream);
+  if (upstreamValid && downstreamValid && upstream == 0.0L &&
+      downstream == 0.0L) {
     reportError("A promoter window cannot have both distances set to zero.");
   }
 
@@ -235,28 +302,15 @@ void SemanticAnalyzer::visit(DefineModuleStmtNode *node) {
   validateSet(node->firstSet, "first-member");
   validateSet(node->secondSet, "second-member");
 
-  const auto toBasePairs = [](const std::string &value,
-                              const std::string &unit) {
-    const long double factor = unit == "MB" ? 1000000.0L
-                               : unit == "KB" ? 1000.0L : 1.0L;
-    return std::strtold(value.c_str(), nullptr) * factor;
-  };
-  const long double minimum =
-      toBasePairs(node->minimumSpacingValue, node->minimumSpacingUnit);
-  const long double maximum =
-      toBasePairs(node->maximumSpacingValue, node->maximumSpacingUnit);
-  const long double coordinateLimit =
-      static_cast<long double>(std::numeric_limits<size_t>::max());
-  if (!std::isfinite(minimum) || !std::isfinite(maximum) || minimum < 0.0 ||
-      maximum < 0.0 || minimum >= coordinateLimit ||
-      maximum >= coordinateLimit) {
-    reportError("Module spacing bounds must be finite, non-negative genomic "
-                "distances within the coordinate range.");
-  } else if (!resolvesToWholeBasePairs(minimum) ||
-             !resolvesToWholeBasePairs(maximum)) {
-    reportError("Module spacing bounds must resolve to whole numbers of base "
-                "pairs.");
-  } else if (minimum > maximum) {
+  long double minimum = 0.0L;
+  long double maximum = 0.0L;
+  const bool minimumValid = parseGenomicDistance(
+      node->minimumSpacingValue, node->minimumSpacingUnit,
+      "Module spacing bounds", true, minimum, true);
+  const bool maximumValid = parseGenomicDistance(
+      node->maximumSpacingValue, node->maximumSpacingUnit,
+      "Module spacing bounds", true, maximum, true);
+  if (minimumValid && maximumValid && minimum > maximum) {
     reportError("Module minimum spacing cannot exceed its maximum spacing.");
   }
 
@@ -319,10 +373,9 @@ void SemanticAnalyzer::visit(FindStmtNode *node) {
 
 void SemanticAnalyzer::visit(FindOptNode *node) {
   if (node->type == "WITHIN") {
-    double distance = parseValue(node->value1);
-    if (distance < 0) {
-      reportError("Distance in WITHIN option cannot be negative.");
-    }
+    long double distance = 0.0L;
+    parseGenomicDistance(node->value1, node->value2,
+                         "Distance in WITHIN option", false, distance);
     if (!node->value4.empty() && isBuiltinEntity(node->value4) &&
         !annotationLoaded) {
       reportError("WITHIN ... FROM " + node->value4 +
@@ -474,25 +527,11 @@ void SemanticAnalyzer::visit(SetOpStmtNode *node) {
       }
     }
     if (!node->maximumSummitDistanceValue.empty()) {
-      const long double factor =
-          node->maximumSummitDistanceUnit == "MB" ? 1000000.0L
-          : node->maximumSummitDistanceUnit == "KB" ? 1000.0L
-                                                     : 1.0L;
-      const long double maximumSummitDistance =
-          std::strtold(node->maximumSummitDistanceValue.c_str(), nullptr) *
-          factor;
-      const long double coordinateLimit =
-          static_cast<long double>(std::numeric_limits<size_t>::max());
-      if (!std::isfinite(maximumSummitDistance) ||
-          maximumSummitDistance < 0.0L ||
-          maximumSummitDistance >= coordinateLimit) {
-        reportError("CONSENSUS MAX_SUMMIT_DISTANCE must be a finite, "
-                    "non-negative genomic distance within the coordinate "
-                    "range.");
-      } else if (!resolvesToWholeBasePairs(maximumSummitDistance)) {
-        reportError("CONSENSUS MAX_SUMMIT_DISTANCE must resolve to a whole "
-                    "number of base pairs.");
-      }
+      long double maximumSummitDistance = 0.0L;
+      parseGenomicDistance(node->maximumSummitDistanceValue,
+                           node->maximumSummitDistanceUnit,
+                           "CONSENSUS MAX_SUMMIT_DISTANCE", true,
+                           maximumSummitDistance);
     }
     for (const auto &entity : node->entities) {
       if (!symbolTable.lookup(entity)) {
@@ -513,19 +552,9 @@ void SemanticAnalyzer::visit(SetOpStmtNode *node) {
     return;
   }
   if (node->op == "NEAR") {
-    const long double factor = node->distanceUnit == "MB" ? 1000000.0L
-                               : node->distanceUnit == "KB" ? 1000.0L
-                               : 1.0L;
-    const long double basePairs =
-        std::strtold(node->distanceValue.c_str(), nullptr) * factor;
-    if (!std::isfinite(basePairs) || basePairs < 0.0 ||
-        basePairs >= static_cast<long double>(
-                        std::numeric_limits<size_t>::max())) {
-      reportError("NEAR distance must be a finite, non-negative genomic "
-                  "distance within the coordinate range.");
-    } else if (!resolvesToWholeBasePairs(basePairs)) {
-      reportError("NEAR distance must resolve to a whole number of base pairs.");
-    }
+    long double basePairs = 0.0L;
+    parseGenomicDistance(node->distanceValue, node->distanceUnit,
+                         "NEAR distance", true, basePairs);
   }
   if (isBuiltinEntity(node->entity1) && !annotationLoaded) {
     reportError("Set operation on " + node->entity1 +
@@ -652,8 +681,14 @@ void SemanticAnalyzer::visit(SimpleConditionNode *node) {
     long long end = 0;
     bool startIsEnd = false;
     bool endIsEnd = false;
-    if (!parseSliceBound(node->sliceStart, start, startIsEnd) ||
-        !parseSliceBound(node->sliceEnd, end, endIsEnd)) {
+    if (node->sliceStart != "END")
+      validateConstantReference(node->sliceStart);
+    if (node->sliceEnd != "END")
+      validateConstantReference(node->sliceEnd);
+    const std::string sliceStart = resolveConstant(node->sliceStart);
+    const std::string sliceEnd = resolveConstant(node->sliceEnd);
+    if (!parseSliceBound(sliceStart, start, startIsEnd) ||
+        !parseSliceBound(sliceEnd, end, endIsEnd)) {
       reportError("SLICE bounds must be whole indices within the supported "
                   "range or END.");
     } else if (startIsEnd ||
@@ -895,8 +930,13 @@ void SemanticAnalyzer::visit(AnalyzeStmtNode *node) {
   if (!sequenceLoaded) {
     reportError("ANALYZE requires sequence data.");
   }
-  if (!node->windowSize.empty() && parseValue(node->windowSize) <= 0.0) {
-    reportError("ANALYZE WINDOW must be greater than zero.");
+  if (!node->windowSize.empty()) {
+    long double windowSize = 0.0L;
+    if (parseGenomicDistance(node->windowSize, "", "ANALYZE WINDOW", false,
+                             windowSize) &&
+        windowSize == 0.0L) {
+      reportError("ANALYZE WINDOW must be greater than zero.");
+    }
   }
   if (node->whereClause) {
     node->whereClause->accept(*this);

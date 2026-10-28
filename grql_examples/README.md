@@ -54,9 +54,10 @@ The `CAPTURES` list names groups in their numeric order. Capture offsets are
 relative to the matched text in its 5'-to-3' orientation, including matches on
 the negative strand.
 
-Example 18 declares a pattern, two sequence literals, and a length once with
-`LET`, then reuses them in `FIND MOTIF` and `WHERE`. Constants do not alter the
-underlying matching or coordinate semantics.
+Example 18 declares a pattern, sequence literals, a length, and slice bounds
+with `LET`, then reuses them in `FIND MOTIF` and `WHERE`. Examples 01, 06, 07,
+11, and 12 use unit-bearing constants in their distance clauses. Constants do
+not alter the underlying matching or coordinate semantics.
 
 The regular expression in `12_orfs.grql` advances three nucleotides at a time
 after `ATG` and rejects an in-frame stop in each repeated codon. It therefore

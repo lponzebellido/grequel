@@ -1218,6 +1218,9 @@ def main() -> int:
             'LET frame_width = 3;\n'
             'LET maximum_gc = 100 %;\n'
             'LET positive_strand = "+";\n'
+            'LET first_base = 0;\n'
+            'LET first_codon_end = 3;\n'
+            'LET search_radius = 12 BP;\n'
             'LOAD SEQUENCE "reading_frame.fasta" AS genome;\n'
             'FIND MOTIF start_pattern STRAND POSITIVE AS starts '
             'WHERE LENGTH >= minimum_length '
@@ -1226,14 +1229,43 @@ def main() -> int:
             'AND GC_CONTENT <= maximum_gc '
             'AND STRAND = positive_strand;\n'
             'EXTRACT starts AS confirmed '
-            'WHERE ORIENTED_SEQUENCE = start_pattern;\n',
+            'WHERE SLICE ORIENTED_SEQUENCE FROM first_base '
+            'TO first_codon_end = start_pattern;\n'
+            'FIND MOTIF "TAA" WITHIN search_radius DOWNSTREAM '
+            'FROM starts STRAND POSITIVE AS nearby_stops;\n',
         )
         require(
             [(item["start"], item["end"], item["strand"])
              for item in data["resultSets"]["starts"]]
             == [(12, 15, "+")]
-            and len(data["resultSets"]["confirmed"]) == 1,
-            "LET constants compose across patterns and numeric filters",
+            and len(data["resultSets"]["confirmed"]) == 1
+            and len(data["resultSets"]["nearby_stops"]) == 1,
+            "LET constants compose across patterns, slices, distances, and "
+            "numeric filters",
+        )
+
+        data, _ = run_query(
+            workspace,
+            "distance_constants",
+            'LET upstream_window = 100 BP;\n'
+            'LET downstream_window = 20 BP;\n'
+            'LET contact_distance = 0;\n'
+            'LET gc_window = 1 KB;\n'
+            'LOAD SEQUENCE "fixture.fasta" AS genome;\n'
+            'LOAD ANNOTATION "fixture.gff3" AS annot;\n'
+            'DEFINE PROMOTERS OF GENE FROM TSS '
+            'UPSTREAM upstream_window DOWNSTREAM downstream_window '
+            'AS promoters;\n'
+            'NEAR promoters TO GENE WITHIN contact_distance BP AS linked;\n'
+            'ANALYZE GC_CONTENT WINDOW gc_window AS gc_profile;\n',
+        )
+        require(
+            [(item["start"], item["end"])
+             for item in data["resultSets"]["promoters"]]
+            == [(0, 20), (1200, 1320), (2900, 3020)]
+            and len(data["resultSets"]["linked"]) == 3
+            and len(data["gcProfiles"]["gc_profile"]) == 4,
+            "distance constants retain units across region operations",
         )
 
         data, _ = run_query(
@@ -1704,6 +1736,29 @@ def main() -> int:
         require("LET declarations are allowed only at the top level" in
                 semantic_error,
                 "LET has deterministic top-level scope")
+
+        semantic_error = run_invalid_query(
+            workspace,
+            "unitless_required_distance_constant",
+            'LET radius = 5;\n'
+            'LOAD ANNOTATION "fixture.gff3" AS annot;\n'
+            'NEAR GENE TO GENE WITHIN radius AS invalid;\n',
+            3,
+        )
+        require("requires BP, KB, or MB" in semantic_error,
+                "required distance clauses reject unitless constants")
+
+        semantic_error = run_invalid_query(
+            workspace,
+            "unit_bearing_slice_constant",
+            'LET slice_start = 1 BP;\n'
+            'LOAD SEQUENCE "reading_frame.fasta" AS genome;\n'
+            'FIND MOTIF "ATG" AS invalid '
+            'WHERE SLICE ORIENTED_SEQUENCE FROM slice_start TO END = "TG";\n',
+            3,
+        )
+        require("SLICE bounds must be whole indices" in semantic_error,
+                "SLICE bounds reject unit-bearing constants")
 
         data, _ = run_query(
             workspace,

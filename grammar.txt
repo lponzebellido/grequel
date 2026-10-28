@@ -34,21 +34,22 @@ ExportStmt         -> EXPORT ID TO STRING FORMAT (BED | GFF3 | TSV) SEMICOLON
 LetStmt            -> LET ID ASSIGN ScalarLiteral SEMICOLON
 ScalarLiteral      -> STRING | SignedNumber Unit | SignedNumber PERCENT
 SignedNumber       -> MINUS? (NUM | FLOAT)
+DistanceOperand    -> (NUM | FLOAT) RequiredUnit | ID RequiredUnit?
+OptionalDistance  -> (NUM | FLOAT) Unit | ID Unit
 DefinePromotersStmt -> DEFINE PROMOTERS OF (GENE | TSS | ID) FROM TSS
-                       UPSTREAM (NUM | FLOAT) RequiredUnit
-                       DOWNSTREAM (NUM | FLOAT) RequiredUnit AS ID SEMICOLON
+                       UPSTREAM DistanceOperand
+                       DOWNSTREAM DistanceOperand AS ID SEMICOLON
 DefineModuleStmt   -> DEFINE MODULE FROM ID WITH ID
-                      SPACING (NUM | FLOAT) RequiredUnit TO
-                              (NUM | FLOAT) RequiredUnit
+                      SPACING DistanceOperand TO DistanceOperand
                       ORDER (ANY | AS_WRITTEN)
                       ORIENTATION (ANY | SAME | OPPOSITE) AS ID SEMICOLON
 TranslateStmt      -> TRANSLATE ID CODE NUM FRAME NUM AS ID SEMICOLON
 
-AnalyzeStmt        -> ANALYZE (GC_CONTENT | CPG_ISLANDS) (WINDOW (NUM | FLOAT) Unit)? AliasOpt WhereClause SEMICOLON
+AnalyzeStmt        -> ANALYZE (GC_CONTENT | CPG_ISLANDS) (WINDOW OptionalDistance)? AliasOpt WhereClause SEMICOLON
 
 FindStmt           -> FIND MOTIF (STRING | ID) FindOpts AliasOpt WhereClause SEMICOLON
 FindOpts           -> FindOpt FindOpts | λ
-FindOpt            -> WITHIN (NUM | FLOAT) Unit Direction FROM EntityRef EntityName
+FindOpt            -> WITHIN OptionalDistance Direction FROM EntityRef EntityName
                     | STRAND StrandType
                     | CHR STRING
                     | CAPTURES LBRACKET STRING (COMMA STRING)* RBRACKET
@@ -64,7 +65,7 @@ ScanOpt            -> IN EntityRef
 SetOperationStmt   -> (INTERSECT | UNION) EntityRef AND EntityRef AliasOpt WhereClause SEMICOLON
                     | EXCEPT EntityRef FROM EntityRef AliasOpt WhereClause SEMICOLON
                     | OVERLAPS EntityRef WITH EntityRef AliasOpt WhereClause SEMICOLON
-                    | NEAR EntityRef TO EntityRef WITHIN (NUM | FLOAT) RequiredUnit AliasOpt WhereClause SEMICOLON
+                    | NEAR EntityRef TO EntityRef WITHIN DistanceOperand AliasOpt WhereClause SEMICOLON
 
 ConsensusStmt      -> CONSENSUS FROM LBRACKET ID COMMA ID ConsensusTail RBRACKET
                       ANCHOR ID MIN_SUPPORT NUM ConsensusCriterionList
@@ -72,7 +73,7 @@ ConsensusStmt      -> CONSENSUS FROM LBRACKET ID COMMA ID ConsensusTail RBRACKET
 ConsensusTail      -> COMMA ID ConsensusTail | λ
 ConsensusCriterionList -> ConsensusCriterion ConsensusCriterionList | λ
 ConsensusCriterion -> MIN_RECIPROCAL_OVERLAP (NUM | FLOAT) PERCENT
-                    | MAX_SUMMIT_DISTANCE (NUM | FLOAT) RequiredUnit
+                    | MAX_SUMMIT_DISTANCE DistanceOperand
 
 CountStmt          -> COUNT EntityRef IN EntityRef AS ID WhereClause SEMICOLON
 
@@ -117,7 +118,7 @@ StringValue        -> SequenceProperty | CAPTURE CaptureRef
 StringExpression   -> StringValue
                     | SLICE StringValue FROM SliceBound TO SliceBound
 CaptureRef         -> NUM | STRING
-SliceBound         -> NUM | MINUS NUM | END
+SliceBound         -> NUM | MINUS NUM | END | ID
 SequenceRelOp      -> ASSIGN | STARTS_WITH | ENDS_WITH | CONTAINS
 SimilarityRefOpt   -> TO ID | λ
 RelOp              -> GREATER | LESS | GREATER_EQ | LESS_EQ | ASSIGN

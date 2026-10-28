@@ -154,6 +154,35 @@ std::string Interpreter::resolveConstant(const std::string &value) const {
   return found == constantValues.end() ? value : found->second;
 }
 
+std::pair<double, std::string>
+Interpreter::resolveNumberAndUnit(const std::string &value,
+                                  const std::string &unit) const {
+  std::string resolved = value;
+  std::string effectiveUnit = unit;
+  size_t separator = resolved.find(' ');
+  if (separator != std::string::npos) {
+    if (effectiveUnit.empty())
+      effectiveUnit = resolved.substr(separator + 1);
+    resolved = resolved.substr(0, separator);
+  }
+  resolved = resolveConstant(resolved);
+  separator = resolved.find(' ');
+  if (separator != std::string::npos) {
+    if (effectiveUnit.empty())
+      effectiveUnit = resolved.substr(separator + 1);
+    resolved = resolved.substr(0, separator);
+  }
+  if (effectiveUnit.empty())
+    effectiveUnit = "BP";
+  return std::make_pair(std::strtod(resolved.c_str(), nullptr), effectiveUnit);
+}
+
+size_t Interpreter::resolveBasePairs(const std::string &value,
+                                     const std::string &unit) {
+  const auto resolved = resolveNumberAndUnit(value, unit);
+  return toBasePairs(resolved.first, resolved.second);
+}
+
 std::string Interpreter::jsonEscape(const std::string &s) const {
   std::string escaped;
   escaped.reserve(s.size());
@@ -1709,16 +1738,8 @@ void Interpreter::executeDefinePromoters(const IRInstruction &instr) {
   const std::string &source = instr.arg1;
   const std::string &alias = instr.arg4;
 
-  auto parseDistance = [this](const std::string &value) {
-    const size_t separator = value.find(' ');
-    const double number = std::atof(value.substr(0, separator).c_str());
-    const std::string unit =
-        separator == std::string::npos ? "BP" : value.substr(separator + 1);
-    return toBasePairs(number, unit);
-  };
-
-  const size_t upstream = parseDistance(instr.arg2);
-  const size_t downstream = parseDistance(instr.arg3);
+  const size_t upstream = resolveBasePairs(instr.arg2);
+  const size_t downstream = resolveBasePairs(instr.arg3);
   const auto activeGenome = sequenceChrMaps.find(activeSequenceAlias);
   if (activeGenome == sequenceChrMaps.end()) {
     reportRuntimeError("DEFINE PROMOTERS requires an active FASTA dataset.");
@@ -1758,10 +1779,8 @@ void Interpreter::executeDefinePromoters(const IRInstruction &instr) {
 }
 
 void Interpreter::executeDefineModule(const IRInstruction &instr) {
-  const size_t minimumSpacing =
-      toBasePairs(std::atof(instr.arg3.c_str()), instr.arg4);
-  const size_t maximumSpacing =
-      toBasePairs(std::atof(instr.arg5.c_str()), instr.arg6);
+  const size_t minimumSpacing = resolveBasePairs(instr.arg3, instr.arg4);
+  const size_t maximumSpacing = resolveBasePairs(instr.arg5, instr.arg6);
   std::vector<GenomicRegion> modules = SetOperations::defineModules(
       resolveEntity(instr.arg1), resolveEntity(instr.arg2), minimumSpacing,
       maximumSpacing, instr.arg7, instr.arg8, instr.arg1, instr.arg2);
@@ -1803,8 +1822,9 @@ void Interpreter::executeFindMotif(const IRInstruction &instr) {
 
 void Interpreter::executeFindOptWithin(const IRInstruction &instr) {
   currentFind.hasWithin = true;
-  currentFind.withinDistance = std::atof(instr.arg1.c_str());
-  currentFind.withinUnit = instr.arg2;
+  const auto distance = resolveNumberAndUnit(instr.arg1, instr.arg2);
+  currentFind.withinDistance = distance.first;
+  currentFind.withinUnit = distance.second;
   currentFind.withinDirection = instr.arg3;
   currentFind.withinEntity = instr.arg4;
   currentFind.withinTarget = stripQuotes(instr.arg5);
@@ -2386,16 +2406,17 @@ bool Interpreter::compareSequenceCondition(
     std::string observed,
     const std::shared_ptr<IRCondition> &condition) const {
   if (!condition->sliceStart.empty()) {
-    auto resolveBound = [&observed](const std::string &text,
-                                    size_t &resolved) {
-      if (text == "END") {
+    auto resolveBound = [this, &observed](const std::string &text,
+                                          size_t &resolved) {
+      const std::string bound = resolveConstant(text);
+      if (bound == "END") {
         resolved = observed.size();
         return true;
       }
       char *remaining = nullptr;
       errno = 0;
-      const long long index = std::strtoll(text.c_str(), &remaining, 10);
-      if (errno == ERANGE || remaining == text.c_str() || *remaining != '\0')
+      const long long index = std::strtoll(bound.c_str(), &remaining, 10);
+      if (errno == ERANGE || remaining == bound.c_str() || *remaining != '\0')
         return false;
       if (index >= 0) {
         const unsigned long long absolute =
@@ -2956,8 +2977,7 @@ void Interpreter::executeSetOp(const IRInstruction &instr) {
     }
     result = SetOperations::selectOverlapping(regions1, regions2, entity2);
   } else {
-    const size_t maximumDistance =
-        toBasePairs(std::strtod(instr.arg4.c_str(), nullptr), instr.arg5);
+    const size_t maximumDistance = resolveBasePairs(instr.arg4, instr.arg5);
     if (debugMode) {
       std::cout << "> NEAR " << entity1 << " TO " << entity2 << " WITHIN "
                 << instr.arg4 << " " << instr.arg5 << std::endl;
@@ -2978,7 +2998,7 @@ void Interpreter::executeConsensus(const IRInstruction &instr) {
   const bool hasMaximumSummitDistance = !instr.arg5.empty();
   const size_t maximumSummitDistanceBp =
       hasMaximumSummitDistance
-          ? toBasePairs(std::strtod(instr.arg5.c_str(), nullptr), instr.arg6)
+          ? resolveBasePairs(instr.arg5, instr.arg6)
           : 0;
   const std::vector<GenomicRegion> anchor = resolveEntity(anchorSet);
   std::vector<std::pair<std::string, std::vector<GenomicRegion>>> supportSets;
@@ -3418,15 +3438,8 @@ void Interpreter::executeAnalyzeGC(const IRInstruction &instr) {
   std::string resultId = instr.arg2;
 
   size_t windowSize = 100;
-  if (!windowSizeStr.empty()) {
-    size_t spacePos = windowSizeStr.find(' ');
-    if (spacePos != std::string::npos) {
-      windowSize = toBasePairs(std::stod(windowSizeStr.substr(0, spacePos)),
-                               windowSizeStr.substr(spacePos + 1));
-    } else {
-      windowSize = toBasePairs(std::stod(windowSizeStr), "BP");
-    }
-  }
+  if (!windowSizeStr.empty())
+    windowSize = resolveBasePairs(windowSizeStr);
 
   const auto &targetDataset =
       sequenceDatasets.count(activeSequenceAlias)

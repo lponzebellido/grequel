@@ -2,12 +2,15 @@ LET pattern = "ATGNNNTAA";
 LET prefix = "ATG";
 LET suffix = "TAA";
 LET match_length = 9 BP;
+LET first_base = 0;
+LET first_codon_end = 3;
+LET terminal_codon_start = -3;
 
 LOAD SEQUENCE "data_examples/strand_demo.fasta" AS genome;
 
 FIND MOTIF pattern AS matches
   WHERE LENGTH = match_length
-    AND ORIENTED_SEQUENCE STARTS_WITH prefix
-    AND ORIENTED_SEQUENCE ENDS_WITH suffix;
+    AND SLICE ORIENTED_SEQUENCE FROM first_base TO first_codon_end = prefix
+    AND SLICE ORIENTED_SEQUENCE FROM terminal_codon_start TO END = suffix;
 
 EXPORT matches TO "constants.tsv" FORMAT TSV;

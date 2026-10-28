@@ -18,6 +18,7 @@
 #include <future>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 struct FindContext {
@@ -79,6 +80,11 @@ private:
 
   std::string stripQuotes(const std::string &s) const;
   std::string resolveConstant(const std::string &value) const;
+  std::pair<double, std::string>
+  resolveNumberAndUnit(const std::string &value,
+                       const std::string &unit = "") const;
+  size_t resolveBasePairs(const std::string &value,
+                          const std::string &unit = "");
   std::string jsonEscape(const std::string &s) const;
   std::string serializeAnnotationAttributesJSON(
       const AnnotationEvidence &evidence) const;

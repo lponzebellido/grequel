@@ -20,6 +20,9 @@ private:
   bool check(TokenType type) const;
   bool match(TokenType type);
   void consume(TokenType type, const std::string &message);
+  void parseDistance(std::string &value, std::string &unit,
+                     bool requireUnit, const std::string &valueMessage,
+                     const std::string &unitMessage);
 
   void synchronize();
   void reportError(const Token &token, const std::string &message);

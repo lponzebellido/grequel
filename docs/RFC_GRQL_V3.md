@@ -319,6 +319,7 @@ Implemented syntax:
 ```grql
 LET start_pattern = "ATG";
 LET frame_width = 3;
+LET terminal_codon_start = -3;
 
 FIND MOTIF "ATG(?:(?!TAA|TAG|TGA)[ACGT]{3})*(?:TAA|TAG|TGA)"
   STRAND POSITIVE AS start_stop_candidates
@@ -332,7 +333,7 @@ EXTRACT bounded_patterns AS alanine_second_codon
   WHERE SLICE ORIENTED_SEQUENCE FROM 3 TO 6 = "GCT";
 
 EXTRACT start_stop_candidates AS terminal_taa
-  WHERE SLICE ORIENTED_SEQUENCE FROM -3 TO END = "TAA";
+  WHERE SLICE ORIENTED_SEQUENCE FROM terminal_codon_start TO END = "TAA";
 
 FIND MOTIF "ATG([ACGT]{3})(TAA|TAG|TGA)"
   CAPTURES ["middle", "stop"] AS codon_patterns;
@@ -387,9 +388,12 @@ Calculated scalar and materialized sequence expressions remain planned.
 constant. Numeric literals retain an optional genomic or percentage unit.
 Constants must be declared before use and share the global symbol namespace
 with datasets and result aliases. They can replace a motif string, a condition
-value, or a `MOD` divisor; each consumer applies the same type and unit checks
-as it would to an inline literal. `LET` is typed value reuse, not textual macro
-expansion, and declarations inside `IF` or `FOREACH` are rejected.
+value, a `MOD` divisor, a `SLICE` bound, an analysis window, or a genomic
+distance. Each consumer applies the same type, unit, range, and integral-base
+pair checks as it would to an inline literal. Required-distance clauses accept
+a unit-bearing constant directly; a unitless constant must supply the unit at
+the use site. `LET` is typed value reuse, not textual macro expansion, and
+declarations inside `IF` or `FOREACH` are rejected.
 
 ### Part 2C2: explicit interval translation
 

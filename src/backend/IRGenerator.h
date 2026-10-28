@@ -29,6 +29,7 @@ enum class IROpCode {
   USE_SEQUENCE,
   USE_ANNOTATION,
   EXPORT_RESULTS,
+  DEFINE_CONSTANT,
   FIND_MOTIF,
   FIND_OPT_WITHIN,
   FIND_OPT_STRAND,
@@ -109,6 +110,7 @@ public:
   void visit(LoadStmtNode *node) override;
   void visit(UseStmtNode *node) override;
   void visit(ExportStmtNode *node) override;
+  void visit(LetStmtNode *node) override;
   void visit(DefinePromotersStmtNode *node) override;
   void visit(DefineModuleStmtNode *node) override;
   void visit(FindOptNode *node) override;

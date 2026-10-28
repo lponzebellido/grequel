@@ -4,8 +4,9 @@ Status: incremental implementation. Explicit promoters, transcript selection,
 strand-aware sequence predicates, calibrated PWM scans, evidence-preserving
 interval operations, two-member modules, imported regulatory tracks, replicate
 consensus, modular coordinate filters, end-relative sequence slicing, named
-regular-expression captures, and explicit interval translation are
-implemented. Later sections are a design contract, not yet accepted syntax.
+regular-expression captures, reusable scalar constants, and explicit interval
+translation are implemented. Later sections are a design contract, not yet
+accepted syntax.
 
 ## Product definition
 
@@ -31,7 +32,7 @@ how many new statements it adds.
 
 | Priority | Missing capability | Why it matters | Smallest useful acceptance target |
 | :--- | :--- | :--- | :--- |
-| 1 | Richer scalar expressions and CDS translation policy | String slicing, named regex captures, and interval translation are explicit, but programmers still need reusable values, joined CDS assembly, phase handling, and an explicit initiation policy | Add reusable string/numeric expressions; specify a separate CDS mode for joined records and initiator codons |
+| 1 | Scalar expressions and CDS translation policy | Scalar constants, string slicing, named regex captures, and interval translation are explicit, but programmers still need calculated expressions, joined CDS assembly, phase handling, and an explicit initiation policy | Add typed arithmetic and string composition; specify a separate CDS mode for joined records and initiator codons |
 | 2 | Enrichment with matched backgrounds | Counts alone cannot distinguish motif enrichment from length or composition effects | Declare foreground/background regions, matching policy, effect size, test, and multiple-testing correction |
 | 3 | CRE-to-gene evidence tables | `NEAR` is useful but genomic proximity is only one candidate-linking rule | Import relationship/contact tables and retain typed promoter, distance, contact, expression, and binding evidence per link |
 | 4 | General regulatory grammars | Two-site modules cannot express larger heterotypic architectures | Named members, more than two sites, transcript-relative orientation, and grouped aggregation |
@@ -316,9 +317,12 @@ Still planned:
 Implemented syntax:
 
 ```grql
+LET start_pattern = "ATG";
+LET frame_width = 3;
+
 FIND MOTIF "ATG(?:(?!TAA|TAG|TGA)[ACGT]{3})*(?:TAA|TAG|TGA)"
   STRAND POSITIVE AS start_stop_candidates
-  WHERE LENGTH MOD 3 = 0 AND START MOD 3 = 0;
+  WHERE LENGTH MOD frame_width = 0 AND START MOD frame_width = 0;
 
 FIND MOTIF "ATGNNNTAA" AS bounded_patterns
   WHERE ORIENTED_SEQUENCE STARTS_WITH "ATG"
@@ -360,8 +364,7 @@ selects the final three characters regardless of value length. An empty,
 reversed, or out-of-bounds range evaluates as no match instead of being
 clamped, so a program cannot silently compare a shorter string. Slicing
 composes with the existing Boolean condition tree and works on motif hits and
-named region sets. Materialized sequence expressions and reusable scalar
-values remain planned.
+named region sets.
 
 `CAPTURE n` addresses the nth explicit capturing group in a `FIND MOTIF`
 regular expression, beginning at one. The engine's lookahead group is not part
@@ -378,7 +381,15 @@ other text values. JSON preserves typed capture objects, while TSV and GFF3
 carry the same structure as JSON. Geometry-preserving selection keeps the
 evidence, whereas clipping and merging discard it.
 
-Materialized expressions and reusable scalar values remain planned.
+Calculated scalar and materialized sequence expressions remain planned.
+
+`LET name = literal;` declares an immutable top-level string or numeric
+constant. Numeric literals retain an optional genomic or percentage unit.
+Constants must be declared before use and share the global symbol namespace
+with datasets and result aliases. They can replace a motif string, a condition
+value, or a `MOD` divisor; each consumer applies the same type and unit checks
+as it would to an inline literal. `LET` is typed value reuse, not textual macro
+expansion, and declarations inside `IF` or `FOREACH` are rejected.
 
 ### Part 2C2: explicit interval translation
 

@@ -13,6 +13,7 @@ class NotConditionNode;
 class LoadStmtNode;
 class UseStmtNode;
 class ExportStmtNode;
+class LetStmtNode;
 class DefinePromotersStmtNode;
 class DefineModuleStmtNode;
 class FindOptNode;
@@ -38,6 +39,7 @@ public:
   virtual void visit(LoadStmtNode* node) = 0;
   virtual void visit(UseStmtNode* node) = 0;
   virtual void visit(ExportStmtNode* node) = 0;
+  virtual void visit(LetStmtNode* node) = 0;
   virtual void visit(DefinePromotersStmtNode* node) = 0;
   virtual void visit(DefineModuleStmtNode* node) = 0;
   virtual void visit(FindOptNode* node) = 0;
@@ -149,6 +151,16 @@ public:
   std::string format;
   ExportStmtNode(std::string a, std::string f, std::string fmt)
       : alias(a), filename(f), format(fmt) {}
+  void print(std::string prefix = "", bool isLast = true) const override;
+  void accept(ASTVisitor& visitor) override;
+};
+
+class LetStmtNode : public StatementNode {
+public:
+  std::string name;
+  std::string value;
+  LetStmtNode(std::string n, std::string v)
+      : name(n), value(v) {}
   void print(std::string prefix = "", bool isLast = true) const override;
   void accept(ASTVisitor& visitor) override;
 };

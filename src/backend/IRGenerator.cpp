@@ -9,6 +9,7 @@ std::string irOpcodeToString(IROpCode op) {
     case IROpCode::USE_SEQUENCE:     return "USE_SEQUENCE";
     case IROpCode::USE_ANNOTATION:   return "USE_ANNOTATION";
     case IROpCode::EXPORT_RESULTS:   return "EXPORT_RESULTS";
+    case IROpCode::DEFINE_CONSTANT:  return "DEFINE_CONSTANT";
     case IROpCode::FIND_MOTIF:       return "FIND_MOTIF";
     case IROpCode::FIND_OPT_WITHIN:  return "FIND_OPT_WITHIN";
     case IROpCode::FIND_OPT_STRAND:  return "FIND_OPT_STRAND";
@@ -150,6 +151,14 @@ void IRGenerator::visit(ExportStmtNode *node) {
   instr.arg1 = node->alias;
   instr.arg2 = node->filename;
   instr.arg3 = node->format;
+  instructions.push_back(instr);
+}
+
+void IRGenerator::visit(LetStmtNode *node) {
+  IRInstruction instr;
+  instr.opcode = IROpCode::DEFINE_CONSTANT;
+  instr.arg1 = node->name;
+  instr.arg2 = node->value;
   instructions.push_back(instr);
 }
 

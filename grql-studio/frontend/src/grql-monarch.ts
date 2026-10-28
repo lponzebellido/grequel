@@ -1,6 +1,6 @@
 export const grqlLanguageDef = {
   keywords: [
-    'LOAD', 'USE', 'EXPORT', 'DEFINE', 'VALIDATE', 'GROUP', 'SEQUENCE', 'ANNOTATION', 'TRACK', 'MATRIX',
+    'LOAD', 'USE', 'EXPORT', 'DEFINE', 'LET', 'VALIDATE', 'GROUP', 'SEQUENCE', 'ANNOTATION', 'TRACK', 'MATRIX',
     'AS', 'OF', 'BY', 'MEMBERS', 'TRANSCRIPTS', 'TYPES', 'SELECT', 'ALL',
     'PROMOTERS', 'FIND', 'MOTIF', 'MODULE', 'TRANSLATE', 'CODE', 'FRAME',
     'WITHIN', 'WITH', 'FROM', 'TO', 'GENE', 'PROMOTER', 'ENHANCER', 'EXON', 'INTRON',

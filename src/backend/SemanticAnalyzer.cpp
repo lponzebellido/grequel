@@ -2,6 +2,7 @@
 #include "../bioinfo/GeneticCode.h"
 #include "../bioinfo/MotifFinder.h"
 #include <cerrno>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
@@ -48,7 +49,7 @@ static bool resolvesToWholeBasePairs(long double value) {
 
 SemanticAnalyzer::SemanticAnalyzer(SymbolTable &symTab)
     : symbolTable(symTab), hasError(false), annotationLoaded(false),
-      sequenceLoaded(false) {}
+      sequenceLoaded(false), controlFlowDepth(0) {}
 
 void SemanticAnalyzer::reportError(const std::string &message) {
   std::cerr << "Semantic Error: " << message << std::endl;
@@ -56,7 +57,29 @@ void SemanticAnalyzer::reportError(const std::string &message) {
 }
 
 double SemanticAnalyzer::parseValue(const std::string &val) {
-  return std::strtod(val.c_str(), nullptr);
+  const std::string resolved = resolveConstant(val);
+  return std::strtod(resolved.c_str(), nullptr);
+}
+
+std::string SemanticAnalyzer::resolveConstant(const std::string &value) const {
+  const auto found = constantValues.find(value);
+  return found == constantValues.end() ? value : found->second;
+}
+
+bool SemanticAnalyzer::validateConstantReference(const std::string &value) {
+  if (value.empty() ||
+      (!std::isalpha(static_cast<unsigned char>(value.front())) &&
+       value.front() != '_')) {
+    return true;
+  }
+  if (constantValues.count(value))
+    return true;
+  if (symbolTable.lookup(value)) {
+    reportError("'" + value + "' is not a scalar constant.");
+  } else {
+    reportError("Scalar constant '" + value + "' is not defined.");
+  }
+  return false;
 }
 
 void SemanticAnalyzer::analyze(ProgramNode *node) {
@@ -98,6 +121,29 @@ void SemanticAnalyzer::visit(LoadStmtNode *node) {
       symbolTable.insert(node->alias, "REGULATORY_TRACK");
     }
   }
+}
+
+void SemanticAnalyzer::visit(LetStmtNode *node) {
+  if (controlFlowDepth > 0) {
+    reportError("LET declarations are allowed only at the top level.");
+    return;
+  }
+  if (symbolTable.lookup(node->name)) {
+    reportError("Alias '" + node->name + "' is already defined.");
+    return;
+  }
+  const bool isString = node->value.size() >= 2 &&
+                        node->value.front() == '"' &&
+                        node->value.back() == '"';
+  if (!isString) {
+    const double numeric = std::strtod(node->value.c_str(), nullptr);
+    if (!std::isfinite(numeric)) {
+      reportError("LET numeric values must be finite.");
+    }
+  }
+  symbolTable.insert(node->name,
+                     isString ? "STRING_CONSTANT" : "NUMERIC_CONSTANT");
+  constantValues[node->name] = node->value;
 }
 
 void SemanticAnalyzer::visit(UseStmtNode *node) {
@@ -226,6 +272,13 @@ void SemanticAnalyzer::visit(FindStmtNode *node) {
     reportError("FIND requires sequence data. Use: LOAD SEQUENCE "
                 "\"file.fasta\" AS alias;");
   }
+  validateConstantReference(node->motif);
+  const std::string motif = resolveConstant(node->motif);
+  const bool motifIsString = motif.size() >= 2 && motif.front() == '"' &&
+                             motif.back() == '"';
+  if (!motifIsString) {
+    reportError("FIND MOTIF requires a string literal or string constant.");
+  }
   if (!node->captureNames.empty()) {
     std::set<std::string> names;
     for (const auto &literal : node->captureNames) {
@@ -238,10 +291,9 @@ void SemanticAnalyzer::visit(FindStmtNode *node) {
                     "' appears more than once.");
       }
     }
-    const std::string pattern =
-        node->motif.size() >= 2
-            ? node->motif.substr(1, node->motif.size() - 2)
-            : "";
+    const std::string pattern = motifIsString
+                                    ? motif.substr(1, motif.size() - 2)
+                                    : "";
     const size_t groupCount = MotifFinder::captureGroupCount(pattern);
     if (node->captureNames.size() != groupCount) {
       reportError("CAPTURES declares " +
@@ -567,6 +619,14 @@ void SemanticAnalyzer::visit(SimpleConditionNode *node) {
       "LENGTH", "START", "END", "SIMILARITY", "GC_CONTENT", "COUNT",
       "TRACK_SCORE", "SIGNAL_VALUE", "MINUS_LOG10_PVALUE",
       "MINUS_LOG10_QVALUE", "SUPPORT_COUNT"};
+  validateConstantReference(node->value);
+  const std::string value = resolveConstant(node->value);
+  const size_t valueSeparator = value.find(' ');
+  const std::string valueUnit =
+      valueSeparator == std::string::npos ? "" : value.substr(valueSeparator + 1);
+  if (!node->modifierValue.empty())
+    validateConstantReference(node->modifierValue);
+  const std::string modifierValue = resolveConstant(node->modifierValue);
   if ((node->op == "STARTS_WITH" || node->op == "ENDS_WITH" ||
        node->op == "CONTAINS") &&
       node->property != "SEQUENCE" &&
@@ -606,34 +666,41 @@ void SemanticAnalyzer::visit(SimpleConditionNode *node) {
     if (!numericProperties.count(node->property)) {
       reportError(node->modifier + " requires a numeric condition property.");
     }
-    const double divisor = parseValue(node->modifierValue);
-    if (!std::isfinite(divisor) || divisor <= 0.0) {
+    const double divisor = parseValue(modifierValue);
+    if (!std::isfinite(divisor) || divisor <= 0.0 ||
+        modifierValue.find(' ') != std::string::npos ||
+        (!modifierValue.empty() && modifierValue.front() == '"')) {
       reportError("MOD divisor must be a finite number greater than zero.");
     }
-    if (node->value.find(' ') != std::string::npos ||
-        (!node->value.empty() && node->value.front() == '"')) {
+    if (value.find(' ') != std::string::npos ||
+        (!value.empty() && value.front() == '"')) {
       reportError("A condition using MOD must compare with a unitless numeric "
                   "value.");
     }
   }
   if (node->property == "LENGTH") {
-    double length = parseValue(node->value);
-    if (length < 0) {
-      reportError("LENGTH cannot be negative.");
+    double length = parseValue(value);
+    if (!std::isfinite(length) || length < 0.0 ||
+        (!value.empty() && value.front() == '"') || valueUnit == "%") {
+      reportError("LENGTH must be compared with a finite, non-negative "
+                  "numeric value using BP, KB, or MB when a unit is present.");
     }
   } else if (node->property == "START" || node->property == "END") {
-    const double coordinate = parseValue(node->value);
+    const double coordinate = parseValue(value);
     if (!std::isfinite(coordinate) || coordinate < 0.0 ||
-        node->value.find(' ') != std::string::npos ||
-        (!node->value.empty() && node->value.front() == '"')) {
+        value.find(' ') != std::string::npos ||
+        (!value.empty() && value.front() == '"')) {
       reportError(node->property +
                   " must be compared with a finite, non-negative unitless "
                   "number.");
     }
   } else if (node->property == "SIMILARITY") {
-    double similarity = parseValue(node->value);
-    if (similarity < 0 || similarity > 100) {
-      reportError("SIMILARITY must be between 0 and 100.");
+    double similarity = parseValue(value);
+    if (!std::isfinite(similarity) || similarity < 0 || similarity > 100 ||
+        (!value.empty() && value.front() == '"') ||
+        (!valueUnit.empty() && valueUnit != "%")) {
+      reportError("SIMILARITY must be a numeric value between 0 and 100, "
+                  "optionally followed by %.");
     }
     if (!node->reference.empty()) {
       if (!symbolTable.lookup(node->reference)) {
@@ -646,16 +713,19 @@ void SemanticAnalyzer::visit(SimpleConditionNode *node) {
       }
     }
   } else if (node->property == "GC_CONTENT") {
-    double gc = parseValue(node->value);
-    if (gc < 0 || gc > 100) {
-      reportError("GC_CONTENT must be between 0 and 100.");
+    double gc = parseValue(value);
+    if (!std::isfinite(gc) || gc < 0 || gc > 100 ||
+        (!value.empty() && value.front() == '"') ||
+        (!valueUnit.empty() && valueUnit != "%")) {
+      reportError("GC_CONTENT must be a numeric value between 0 and 100, "
+                  "optionally followed by %.");
     }
   } else if (node->property == "COUNT" ||
              node->property == "SUPPORT_COUNT") {
-    const double count = parseValue(node->value);
+    const double count = parseValue(value);
     if (!std::isfinite(count) || count < 0.0 || std::floor(count) != count ||
-        node->value.find(' ') != std::string::npos ||
-        (!node->value.empty() && node->value.front() == '"')) {
+        value.find(' ') != std::string::npos ||
+        (!value.empty() && value.front() == '"')) {
       reportError(node->property +
                   " must be compared with a finite, non-negative whole "
                   "number without a unit.");
@@ -664,17 +734,16 @@ void SemanticAnalyzer::visit(SimpleConditionNode *node) {
              node->property == "SIGNAL_VALUE" ||
              node->property == "MINUS_LOG10_PVALUE" ||
              node->property == "MINUS_LOG10_QVALUE") {
-    const double value = parseValue(node->value);
-    if (!std::isfinite(value) || value < 0.0 ||
-        node->value.find(' ') != std::string::npos ||
-        (!node->value.empty() && node->value.front() == '"')) {
+    const double numericValue = parseValue(value);
+    if (!std::isfinite(numericValue) || numericValue < 0.0 ||
+        value.find(' ') != std::string::npos ||
+        (!value.empty() && value.front() == '"')) {
       reportError(node->property +
                   " must be compared with a finite, non-negative number "
                   "without a unit.");
     }
   } else if (node->property == "STRAND") {
-    if (node->value != "\"+\"" && node->value != "\"-\"" &&
-        node->value != "\".\"") {
+    if (value != "\"+\"" && value != "\"-\"" && value != "\".\"") {
       reportError("STRAND must be compared with \"+\", \"-\", or \".\".");
     }
     if (node->op != "=" && node->op != "==") {
@@ -684,10 +753,9 @@ void SemanticAnalyzer::visit(SimpleConditionNode *node) {
              node->property == "ORIENTED_SEQUENCE" ||
              node->property == "PROTEIN_SEQUENCE" ||
              node->property == "CAPTURE") {
-    if (node->value.size() < 2 || node->value.front() != '"' ||
-        node->value.back() != '"') {
+    if (value.size() < 2 || value.front() != '"' || value.back() != '"') {
       reportError(node->property + " must be compared with a string value.");
-    } else if (node->value == "\"\"") {
+    } else if (value == "\"\"") {
       reportError(node->property + " cannot be compared with an empty string.");
     }
     if (node->op != "=" && node->op != "==" &&
@@ -714,8 +782,7 @@ void SemanticAnalyzer::visit(SimpleConditionNode *node) {
   } else if (node->property == "TYPE" || node->property == "PARENT" ||
              node->property == "SOURCE" || node->property == "PHASE" ||
              node->property == "ATTRIBUTE") {
-    if (node->value.size() < 2 || node->value.front() != '"' ||
-        node->value.back() != '"') {
+    if (value.size() < 2 || value.front() != '"' || value.back() != '"') {
       reportError(node->property + " must be compared with a string value.");
     }
     if (node->op != "=" && node->op != "==") {
@@ -731,16 +798,15 @@ void SemanticAnalyzer::visit(SimpleConditionNode *node) {
              node->property == "CONDITION" ||
              node->property == "REPLICATE" ||
              node->property == "CONTROL") {
-    if (node->value.size() < 2 || node->value.front() != '"' ||
-        node->value.back() != '"') {
+    if (value.size() < 2 || value.front() != '"' || value.back() != '"') {
       reportError(node->property + " must be compared with a string value.");
     }
     if (node->op != "=" && node->op != "==") {
       reportError(node->property + " supports only equality comparison.");
     }
   } else if ((node->property == "ID" || node->property == "NAME") &&
-             (node->value.size() < 2 || node->value.front() != '"' ||
-              node->value.back() != '"')) {
+             (value.size() < 2 || value.front() != '"' ||
+              value.back() != '"')) {
     reportError(node->property + " must be compared with a string value.");
   }
 }
@@ -913,12 +979,14 @@ void SemanticAnalyzer::visit(TranslateStmtNode *node) {
 
 void SemanticAnalyzer::visit(IfStmtNode *node) {
   if (node->condition) node->condition->accept(*this);
+  ++controlFlowDepth;
   for (auto &stmt : node->thenStatements) {
     if (stmt) stmt->accept(*this);
   }
   for (auto &stmt : node->elseStatements) {
     if (stmt) stmt->accept(*this);
   }
+  --controlFlowDepth;
 }
 
 void SemanticAnalyzer::visit(ForeachStmtNode *node) {
@@ -936,7 +1004,9 @@ void SemanticAnalyzer::visit(ForeachStmtNode *node) {
     }
   }
   symbolTable.insert(node->iteratorVar, "ITERATOR_VAR");
+  ++controlFlowDepth;
   for (auto &stmt : node->bodyStatements) {
     if (stmt) stmt->accept(*this);
   }
+  --controlFlowDepth;
 }

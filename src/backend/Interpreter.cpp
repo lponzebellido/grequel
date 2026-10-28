@@ -149,6 +149,11 @@ std::string Interpreter::stripQuotes(const std::string &s) const {
   return s;
 }
 
+std::string Interpreter::resolveConstant(const std::string &value) const {
+  const auto found = constantValues.find(value);
+  return found == constantValues.end() ? value : found->second;
+}
+
 std::string Interpreter::jsonEscape(const std::string &s) const {
   std::string escaped;
   escaped.reserve(s.size());
@@ -1694,6 +1699,12 @@ void Interpreter::executeExport(const IRInstruction &instr) {
   }
 }
 
+void Interpreter::executeDefineConstant(const IRInstruction &instr) {
+  constantValues[instr.arg1] = instr.arg2;
+  if (debugMode)
+    std::cout << "> LET " << instr.arg1 << " = " << instr.arg2 << std::endl;
+}
+
 void Interpreter::executeDefinePromoters(const IRInstruction &instr) {
   const std::string &source = instr.arg1;
   const std::string &alias = instr.arg4;
@@ -1780,7 +1791,7 @@ void Interpreter::executeDefineModule(const IRInstruction &instr) {
 
 void Interpreter::executeFindMotif(const IRInstruction &instr) {
   currentFind = FindContext();
-  currentFind.pattern = stripQuotes(instr.arg1);
+  currentFind.pattern = stripQuotes(resolveConstant(instr.arg1));
   for (const auto &name : instr.listArgs)
     currentFind.captureNames.push_back(stripQuotes(name));
   currentFind.hasWithin = false;
@@ -2332,11 +2343,12 @@ void Interpreter::executeFilterSimilarity(const IRInstruction &instr) {
 
 bool Interpreter::compareValues(double left, const std::string &op,
                                 const std::string &right) const {
-  double rightValue = std::atof(right.c_str());
-  const size_t spacePos = right.find(' ');
+  const std::string resolved = resolveConstant(right);
+  double rightValue = std::atof(resolved.c_str());
+  const size_t spacePos = resolved.find(' ');
   if (spacePos != std::string::npos) {
-    rightValue = std::atof(right.substr(0, spacePos).c_str());
-    const std::string unit = right.substr(spacePos + 1);
+    rightValue = std::atof(resolved.substr(0, spacePos).c_str());
+    const std::string unit = resolved.substr(spacePos + 1);
     if (unit == "KB")
       rightValue *= 1000.0;
     else if (unit == "MB")
@@ -2361,7 +2373,8 @@ bool Interpreter::compareValues(double left, const std::string &op,
 bool Interpreter::compareConditionValue(
     double left, const std::shared_ptr<IRCondition> &condition) const {
   if (condition->modifier == "MOD") {
-    const double divisor = std::atof(condition->modifierValue.c_str());
+    const double divisor =
+        std::atof(resolveConstant(condition->modifierValue).c_str());
     if (!std::isfinite(divisor) || divisor <= 0.0)
       return false;
     left = std::fmod(left, divisor);
@@ -2407,7 +2420,7 @@ bool Interpreter::compareSequenceCondition(
     observed = observed.substr(start, end - start);
   }
   return compareSequenceText(observed, condition->op,
-                             stripQuotes(condition->value));
+                             stripQuotes(resolveConstant(condition->value)));
 }
 
 bool Interpreter::compareCaptureCondition(
@@ -2507,7 +2520,8 @@ bool Interpreter::evaluateRegionCondition(
                                  condition);
   }
   if (condition->property == "STRAND") {
-    const std::string expected = stripQuotes(condition->value);
+    const std::string expected =
+        stripQuotes(resolveConstant(condition->value));
     return (condition->op == "=" || condition->op == "==") &&
            region.strand == expected;
   }
@@ -2549,7 +2563,8 @@ bool Interpreter::evaluateRegionCondition(
       condition->property == "CONTROL") {
     if (!region.trackEvidence.present)
       return false;
-    const std::string expected = stripQuotes(condition->value);
+    const std::string expected =
+        stripQuotes(resolveConstant(condition->value));
     const std::string observed =
         condition->property == "EVIDENCE_CLASS"
             ? region.trackEvidence.evidenceClass
@@ -2562,14 +2577,16 @@ bool Interpreter::evaluateRegionCondition(
            observed == expected;
   }
   if (condition->property == "TYPE") {
-    const std::string expected = stripQuotes(condition->value);
+    const std::string expected =
+        stripQuotes(resolveConstant(condition->value));
     return (condition->op == "=" || condition->op == "==") &&
            region.type == expected;
   }
   if (condition->property == "PARENT") {
     if (!region.annotationEvidence.present)
       return false;
-    const std::string expected = stripQuotes(condition->value);
+    const std::string expected =
+        stripQuotes(resolveConstant(condition->value));
     return (condition->op == "=" || condition->op == "==") &&
            std::find(region.annotationEvidence.parents.begin(),
                      region.annotationEvidence.parents.end(), expected) !=
@@ -2578,7 +2595,8 @@ bool Interpreter::evaluateRegionCondition(
   if (condition->property == "SOURCE" || condition->property == "PHASE") {
     if (!region.annotationEvidence.present)
       return false;
-    const std::string expected = stripQuotes(condition->value);
+    const std::string expected =
+        stripQuotes(resolveConstant(condition->value));
     const std::string &observed = condition->property == "SOURCE"
                                       ? region.annotationEvidence.source
                                       : region.annotationEvidence.phase;
@@ -2592,12 +2610,14 @@ bool Interpreter::evaluateRegionCondition(
     const auto attribute = region.annotationEvidence.attributes.find(key);
     if (attribute == region.annotationEvidence.attributes.end())
       return false;
-    const std::string expected = stripQuotes(condition->value);
+    const std::string expected =
+        stripQuotes(resolveConstant(condition->value));
     return (condition->op == "=" || condition->op == "==") &&
            attribute->second == expected;
   }
   if (condition->property == "ID" || condition->property == "NAME") {
-    const std::string expected = stripQuotes(condition->value);
+    const std::string expected =
+        stripQuotes(resolveConstant(condition->value));
     const std::string observed =
         condition->property == "ID" && region.annotationEvidence.present &&
                 !region.annotationEvidence.id.empty()
@@ -2667,7 +2687,8 @@ bool Interpreter::evaluateMotifCondition(
     return compareConditionValue(
         static_cast<double>(match.position + match.matchLength), condition);
   if (condition->property == "STRAND") {
-    const std::string expected = stripQuotes(condition->value);
+    const std::string expected =
+        stripQuotes(resolveConstant(condition->value));
     return (condition->op == "=" || condition->op == "==") &&
            match.strand == expected;
   }
@@ -3802,6 +3823,7 @@ void Interpreter::execute(const std::vector<IRInstruction> &program,
   currentPrintIndex = 0;
   currentFind = FindContext();
   currentScan = ScanContext();
+  constantValues.clear();
 
   lastPrintIndex = -1;
   int printIdx = 0;
@@ -3877,6 +3899,9 @@ void Interpreter::execute(const std::vector<IRInstruction> &program,
       break;
     case IROpCode::EXPORT_RESULTS:
       executeExport(instr);
+      break;
+    case IROpCode::DEFINE_CONSTANT:
+      executeDefineConstant(instr);
       break;
     case IROpCode::DEFINE_PROMOTERS:
       executeDefinePromoters(instr);

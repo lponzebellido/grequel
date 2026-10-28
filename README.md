@@ -161,6 +161,26 @@ USE SEQUENCE genome;
 USE ANNOTATION annot;
 ```
 
+### 1.1 Reusable scalar constants (`LET`)
+
+Declare immutable string or numeric values once and reuse them in motif
+patterns and conditions:
+
+```sql
+LET start_pattern = "ATG";
+LET minimum_length = 15 BP;
+LET frame_width = 3;
+
+FIND MOTIF start_pattern AS starts
+    WHERE LENGTH >= minimum_length
+      AND START MOD frame_width = 0;
+```
+
+Constants are top-level declarations and must appear before use. Numeric
+constants retain their optional `BP`, `KB`, `MB`, or `%` unit; the property
+using the constant still enforces its normal type and unit rules. Constants do
+not perform textual macro expansion and cannot be redefined.
+
 ### 2. Motif Searching & Spatial Conditions (`FIND MOTIF`)
 
 Locate exact motifs, regular expressions, or IUPAC degenerate strings, with optional spatial constraints relative to other features:
@@ -544,7 +564,7 @@ the authoritative grammar:
 Program            ::= StatementList
 StatementList      ::= Statement StatementList | λ
 
-Statement          ::= LoadStmt | UseStmt | ValidateStmt | GroupStmt | ExportStmt | FindStmt | ExtractStmt
+Statement          ::= LoadStmt | UseStmt | ValidateStmt | GroupStmt | ExportStmt | LetStmt | FindStmt | ExtractStmt
                      | DefinePromotersStmt | DefineModuleStmt | TranslateStmt
                      | SetOperationStmt | ConsensusStmt | CountStmt
                      | ScanStmt | AnalyzeStmt
@@ -560,6 +580,9 @@ UseStmt            ::= USE (SEQUENCE | ANNOTATION) ID SEMICOLON
 ValidateStmt       ::= VALIDATE ANNOTATION ID AS ID SEMICOLON
 GroupStmt          ::= GROUP ID BY ID AS ID SEMICOLON
 ExportStmt         ::= EXPORT ID TO STRING FORMAT (BED | GFF3 | TSV) SEMICOLON
+LetStmt            ::= LET ID "=" ScalarLiteral SEMICOLON
+ScalarLiteral      ::= STRING | ("-")? (NUM | FLOAT) Unit
+                     | ("-")? (NUM | FLOAT) PERCENT
 DefinePromotersStmt ::= DEFINE PROMOTERS OF (GENE | TSS | ID) FROM TSS
                         UPSTREAM (NUM | FLOAT) RequiredUnit
                         DOWNSTREAM (NUM | FLOAT) RequiredUnit AS ID SEMICOLON
@@ -572,7 +595,7 @@ TranslateStmt      ::= TRANSLATE ID CODE NUM FRAME NUM AS ID SEMICOLON
 
 AnalyzeStmt        ::= ANALYZE (GC_CONTENT | CPG_ISLANDS) (WINDOW (NUM | FLOAT) Unit)? AliasOpt WhereClause SEMICOLON
 
-FindStmt           ::= FIND MOTIF STRING FindOpts AliasOpt WhereClause SEMICOLON
+FindStmt           ::= FIND MOTIF (STRING | ID) FindOpts AliasOpt WhereClause SEMICOLON
 FindOpts           ::= FindOpt FindOpts | λ
 FindOpt            ::= WITHIN (NUM | FLOAT) Unit Direction FROM EntityRef EntityName
                      | STRAND StrandType
@@ -625,10 +648,11 @@ Factor             ::= NOT Factor | SimpleCondition | "(" Condition ")"
 
 SimpleCondition    ::= NumericProperty NumericModifierOpt RelOp Value
                      | SIMILARITY SimilarityRefOpt NumericModifierOpt RelOp Value
-                     | StringExpression SequenceRelOp STRING
-                     | StringProperty RelOp STRING
-                     | ATTRIBUTE STRING RelOp STRING
-NumericModifierOpt ::= MOD (NUM | FLOAT) | λ
+                     | StringExpression SequenceRelOp StringOperand
+                     | StringProperty RelOp StringOperand
+                     | ATTRIBUTE STRING RelOp StringOperand
+StringOperand      ::= STRING | ID
+NumericModifierOpt ::= MOD (NUM | FLOAT | ID) | λ
 NumericProperty    ::= LENGTH | START | END | GC_CONTENT | COUNT
                      | SUPPORT_COUNT | TRACK_SCORE | SIGNAL_VALUE
                      | MINUS_LOG10_PVALUE | MINUS_LOG10_QVALUE
@@ -644,7 +668,7 @@ SliceBound         ::= NUM | "-" NUM | END
 SequenceRelOp      ::= "=" | STARTS_WITH | ENDS_WITH | CONTAINS
 SimilarityRefOpt   ::= TO ID | λ
 RelOp              ::= ">" | "<" | ">=" | "<=" | "="
-Value              ::= (NUM | FLOAT) Unit | (NUM | FLOAT) PERCENT | NUM | FLOAT | STRING
+Value              ::= (NUM | FLOAT) Unit | (NUM | FLOAT) PERCENT | NUM | FLOAT | STRING | ID
 Probability        ::= NUM | FLOAT
 
 Unit               ::= BP | KB | MB | λ
@@ -710,6 +734,7 @@ track, transcript, and strand examples use small synthetic fixtures. See
 | `15_strands.grql` | Compare reference and strand-oriented sequence | `SEQUENCE`, `ORIENTED_SEQUENCE` |
 | `16_translate.grql` | Translate intervals under two genetic codes | `TRANSLATE`, `PROTEIN_SEQUENCE` |
 | `17_captures.grql` | Name and filter regular-expression groups | `CAPTURES`, `CAPTURE` |
+| `18_constants.grql` | Reuse patterns and thresholds | `LET` |
 
 ---
 

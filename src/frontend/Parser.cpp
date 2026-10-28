@@ -55,6 +55,7 @@ void Parser::synchronize() {
     case TokenType::LOAD:
     case TokenType::USE:
     case TokenType::EXPORT:
+    case TokenType::LET:
     case TokenType::DEFINE:
     case TokenType::VALIDATE:
     case TokenType::GROUP:
@@ -98,6 +99,8 @@ std::unique_ptr<StatementNode> Parser::parseStatement() {
     return parseUse();
   if (match(TokenType::EXPORT))
     return parseExport();
+  if (match(TokenType::LET))
+    return parseLet();
   if (match(TokenType::VALIDATE))
     return parseValidate();
   if (match(TokenType::GROUP))
@@ -361,6 +364,32 @@ std::unique_ptr<ExportStmtNode> Parser::parseExport() {
       new ExportStmtNode(alias, filename, format));
 }
 
+std::unique_ptr<LetStmtNode> Parser::parseLet() {
+  consume(TokenType::ID, "Expected a constant name after LET.");
+  const std::string name = previous().lexeme;
+  consume(TokenType::ASSIGN, "Expected '=' after the constant name.");
+
+  std::string value;
+  if (match(TokenType::STRING)) {
+    value = previous().lexeme;
+  } else {
+    if (match(TokenType::MINUS))
+      value = previous().lexeme;
+    if (!match(TokenType::NUM) && !match(TokenType::FLOAT)) {
+      reportError(peek(), "Expected a string or numeric literal after '='.");
+      throw std::runtime_error("Parse error");
+    }
+    value += previous().lexeme;
+    if (match(TokenType::BP) || match(TokenType::KB) ||
+        match(TokenType::MB) || match(TokenType::PERCENT)) {
+      value += " " + previous().lexeme;
+    }
+  }
+
+  consume(TokenType::SEMICOLON, "Expected ';' after the constant value.");
+  return std::unique_ptr<LetStmtNode>(new LetStmtNode(name, value));
+}
+
 std::unique_ptr<LoadStmtNode> Parser::parseLoad() {
   std::string loadType;
   if (match(TokenType::SEQUENCE)) {
@@ -452,7 +481,10 @@ std::unique_ptr<LoadStmtNode> Parser::parseLoad() {
 
 std::unique_ptr<FindStmtNode> Parser::parseFind() {
   consume(TokenType::MOTIF, "Expected 'MOTIF' after FIND.");
-  consume(TokenType::STRING, "Expected the motif name (string).");
+  if (!match(TokenType::STRING) && !match(TokenType::ID)) {
+    reportError(peek(), "Expected a motif string or string constant.");
+    throw std::runtime_error("Parse error");
+  }
   auto node =
       std::unique_ptr<FindStmtNode>(new FindStmtNode(previous().lexeme));
 
@@ -1099,7 +1131,8 @@ std::unique_ptr<SimpleConditionNode> Parser::parseSimpleCondition() {
   std::string modifierValue;
   if (match(TokenType::MOD)) {
     modifier = previous().lexeme;
-    if (!match(TokenType::NUM) && !match(TokenType::FLOAT)) {
+    if (!match(TokenType::NUM) && !match(TokenType::FLOAT) &&
+        !match(TokenType::ID)) {
       reportError(peek(), "Expected a numeric divisor after MOD.");
       throw std::runtime_error("Parse error");
     }
@@ -1120,14 +1153,17 @@ std::unique_ptr<SimpleConditionNode> Parser::parseSimpleCondition() {
 
   std::string val;
   if (match(TokenType::NUM) || match(TokenType::FLOAT) ||
-      match(TokenType::STRING)) {
+      match(TokenType::STRING) || match(TokenType::ID)) {
     val = previous().lexeme;
-    if (match(TokenType::BP) || match(TokenType::KB) || match(TokenType::MB) ||
-        match(TokenType::PERCENT)) {
+    if ((previous().type == TokenType::NUM ||
+         previous().type == TokenType::FLOAT) &&
+        (match(TokenType::BP) || match(TokenType::KB) ||
+         match(TokenType::MB) || match(TokenType::PERCENT))) {
       val += " " + previous().lexeme;
     }
   } else {
-    reportError(peek(), "Expected a value (NUM, FLOAT, STRING).");
+    reportError(peek(),
+                "Expected a numeric value, string, or scalar constant.");
     throw std::runtime_error("Parse error");
   }
 

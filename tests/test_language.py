@@ -1211,6 +1211,33 @@ def main() -> int:
 
         data, _ = run_query(
             workspace,
+            "scalar_constants",
+            'LET start_pattern = "ATG";\n'
+            'LET minimum_length = 3 BP;\n'
+            'LET minimum_start = 3;\n'
+            'LET frame_width = 3;\n'
+            'LET maximum_gc = 100 %;\n'
+            'LET positive_strand = "+";\n'
+            'LOAD SEQUENCE "reading_frame.fasta" AS genome;\n'
+            'FIND MOTIF start_pattern STRAND POSITIVE AS starts '
+            'WHERE LENGTH >= minimum_length '
+            'AND START >= minimum_start '
+            'AND START MOD frame_width = 0 '
+            'AND GC_CONTENT <= maximum_gc '
+            'AND STRAND = positive_strand;\n'
+            'EXTRACT starts AS confirmed '
+            'WHERE ORIENTED_SEQUENCE = start_pattern;\n',
+        )
+        require(
+            [(item["start"], item["end"], item["strand"])
+             for item in data["resultSets"]["starts"]]
+            == [(12, 15, "+")]
+            and len(data["resultSets"]["confirmed"]) == 1,
+            "LET constants compose across patterns and numeric filters",
+        )
+
+        data, _ = run_query(
+            workspace,
             "coordinate_and_strand_filter",
             'LOAD SEQUENCE "reading_frame.fasta" AS genome;\n'
             'FIND MOTIF "ATG" AS aligned_starts '
@@ -1620,6 +1647,63 @@ def main() -> int:
         )
         require("names must be unique" in semantic_error,
                 "CAPTURES names must be unique")
+
+        semantic_error = run_invalid_query(
+            workspace,
+            "undefined_scalar_constant",
+            'LOAD SEQUENCE "reading_frame.fasta" AS genome;\n'
+            'FIND MOTIF missing_pattern AS invalid;\n',
+            3,
+        )
+        require("Scalar constant 'missing_pattern' is not defined" in
+                semantic_error,
+                "scalar constants must be declared before use")
+
+        semantic_error = run_invalid_query(
+            workspace,
+            "numeric_pattern_constant",
+            'LET pattern = 3;\n'
+            'LOAD SEQUENCE "reading_frame.fasta" AS genome;\n'
+            'FIND MOTIF pattern AS invalid;\n',
+            3,
+        )
+        require("requires a string literal or string constant" in
+                semantic_error,
+                "FIND MOTIF rejects numeric constants")
+
+        semantic_error = run_invalid_query(
+            workspace,
+            "string_numeric_constant",
+            'LET threshold = "three";\n'
+            'LOAD SEQUENCE "reading_frame.fasta" AS genome;\n'
+            'FIND MOTIF "ATG" AS invalid WHERE LENGTH >= threshold;\n',
+            3,
+        )
+        require("LENGTH must be compared with a finite" in semantic_error,
+                "numeric properties reject string constants")
+
+        semantic_error = run_invalid_query(
+            workspace,
+            "duplicate_scalar_constant",
+            'LET threshold = 3;\n'
+            'LET threshold = 6;\n',
+            3,
+        )
+        require("Alias 'threshold' is already defined" in semantic_error,
+                "LET cannot redefine an existing symbol")
+
+        semantic_error = run_invalid_query(
+            workspace,
+            "conditional_scalar_constant",
+            'LOAD SEQUENCE "reading_frame.fasta" AS genome;\n'
+            'IF GC_CONTENT >= 0 THEN\n'
+            '  LET local_threshold = 3;\n'
+            'ENDIF;\n',
+            3,
+        )
+        require("LET declarations are allowed only at the top level" in
+                semantic_error,
+                "LET has deterministic top-level scope")
 
         data, _ = run_query(
             workspace,

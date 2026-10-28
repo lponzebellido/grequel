@@ -66,6 +66,11 @@ void DefineModuleStmtNode::print(std::string prefix, bool isLast) const {
               << alias << ")" << std::endl;
 }
 
+void LetStmtNode::print(std::string prefix, bool isLast) const {
+    std::cout << prefix << (isLast ? "└── " : "├── ")
+              << "LetStmt(" << name << " = " << value << ")" << std::endl;
+}
+
 void FindOptNode::print(std::string prefix, bool isLast) const {
     std::cout << prefix << (isLast ? "└── " : "├── ") << "FindOpt(" << type;
     if (!value1.empty()) std::cout << ", " << value1;
@@ -275,6 +280,7 @@ void NotConditionNode::accept(ASTVisitor& visitor) { visitor.visit(this); }
 void LoadStmtNode::accept(ASTVisitor& visitor) { visitor.visit(this); }
 void UseStmtNode::accept(ASTVisitor& visitor) { visitor.visit(this); }
 void ExportStmtNode::accept(ASTVisitor& visitor) { visitor.visit(this); }
+void LetStmtNode::accept(ASTVisitor& visitor) { visitor.visit(this); }
 void DefinePromotersStmtNode::accept(ASTVisitor& visitor) { visitor.visit(this); }
 void DefineModuleStmtNode::accept(ASTVisitor& visitor) { visitor.visit(this); }
 void FindOptNode::accept(ASTVisitor& visitor) { visitor.visit(this); }

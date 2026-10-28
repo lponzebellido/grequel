@@ -28,6 +28,7 @@ private:
   std::unique_ptr<LoadStmtNode> parseLoad();
   std::unique_ptr<UseStmtNode> parseUse();
   std::unique_ptr<ExportStmtNode> parseExport();
+  std::unique_ptr<LetStmtNode> parseLet();
   std::unique_ptr<DefinePromotersStmtNode> parseDefinePromoters();
   std::unique_ptr<DefineModuleStmtNode> parseDefineModule();
   std::unique_ptr<FindStmtNode> parseFind();

@@ -26,6 +26,7 @@ from the repository root:
 | `15_strands.grql` | Compare reference and strand-oriented sequence | synthetic FASTA |
 | `16_translate.grql` | Translate intervals with two genetic codes | synthetic FASTA |
 | `17_captures.grql` | Name and query regular-expression groups | synthetic FASTA |
+| `18_constants.grql` | Reuse typed scalar values | synthetic FASTA |
 
 `ecoli2.fna` and `genomic.gff` use accession `U00096.3`, so sequence and
 annotation coordinates refer to the same assembly. The track and regulatory
@@ -52,6 +53,10 @@ their values with `CAPTURE`, including a named suffix selected with `SLICE`.
 The `CAPTURES` list names groups in their numeric order. Capture offsets are
 relative to the matched text in its 5'-to-3' orientation, including matches on
 the negative strand.
+
+Example 18 declares a pattern, two sequence literals, and a length once with
+`LET`, then reuses them in `FIND MOTIF` and `WHERE`. Constants do not alter the
+underlying matching or coordinate semantics.
 
 The regular expression in `12_orfs.grql` advances three nucleotides at a time
 after `ATG` and rejects an in-frame stop in each repeated codon. It therefore

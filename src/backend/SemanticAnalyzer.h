@@ -4,6 +4,7 @@
 #include "../frontend/AST.h"
 #include "SymbolTable.h"
 #include <string>
+#include <unordered_map>
 
 class SemanticAnalyzer : public ASTVisitor {
 private:
@@ -11,9 +12,13 @@ private:
   bool hasError;
   bool annotationLoaded;
   bool sequenceLoaded;
+  int controlFlowDepth;
+  std::unordered_map<std::string, std::string> constantValues;
 
   void reportError(const std::string &message);
   double parseValue(const std::string &val);
+  std::string resolveConstant(const std::string &value) const;
+  bool validateConstantReference(const std::string &value);
 
 public:
   SemanticAnalyzer(SymbolTable &symTab);
@@ -27,6 +32,7 @@ public:
   void visit(LoadStmtNode *node) override;
   void visit(UseStmtNode *node) override;
   void visit(ExportStmtNode *node) override;
+  void visit(LetStmtNode *node) override;
   void visit(DefinePromotersStmtNode *node) override;
   void visit(DefineModuleStmtNode *node) override;
   void visit(FindOptNode *node) override;

@@ -59,6 +59,7 @@ private:
       annotationRecordsById;
   std::unordered_map<std::string, std::vector<GenomicRegion>> resultSets;
   std::unordered_map<std::string, std::vector<MotifMatch>> motifResults;
+  std::unordered_map<std::string, std::string> constantValues;
   std::unordered_map<std::string, std::vector<GenomicRegion>> namedRegions;
   std::unordered_map<std::string, PWMatrix> loadedMatrices;
   std::unordered_map<std::string, std::vector<GCWindow>> gcResults;
@@ -77,6 +78,7 @@ private:
   int currentPrintIndex;
 
   std::string stripQuotes(const std::string &s) const;
+  std::string resolveConstant(const std::string &value) const;
   std::string jsonEscape(const std::string &s) const;
   std::string serializeAnnotationAttributesJSON(
       const AnnotationEvidence &evidence) const;
@@ -108,6 +110,7 @@ private:
   void executeLoadTrack(const IRInstruction &instr);
   void executeUseDataset(const IRInstruction &instr);
   void executeExport(const IRInstruction &instr);
+  void executeDefineConstant(const IRInstruction &instr);
   void executeDefinePromoters(const IRInstruction &instr);
   void executeDefineModule(const IRInstruction &instr);
   void executeFindMotif(const IRInstruction &instr);

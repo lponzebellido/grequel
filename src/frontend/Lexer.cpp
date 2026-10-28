@@ -19,6 +19,7 @@ void Lexer::initKeywords() {
     keywords["USE"] = TokenType::USE;
     keywords["EXPORT"] = TokenType::EXPORT;
     keywords["DEFINE"] = TokenType::DEFINE;
+    keywords["LET"] = TokenType::LET;
     keywords["VALIDATE"] = TokenType::VALIDATE;
     keywords["GROUP"] = TokenType::GROUP;
     keywords["TRANSLATE"] = TokenType::TRANSLATE;
@@ -417,6 +418,7 @@ std::string tokenTypeToString(TokenType type) {
         case TokenType::USE: return "USE";
         case TokenType::EXPORT: return "EXPORT";
         case TokenType::DEFINE: return "DEFINE";
+        case TokenType::LET: return "LET";
         case TokenType::VALIDATE: return "VALIDATE";
         case TokenType::GROUP: return "GROUP";
         case TokenType::TRANSLATE: return "TRANSLATE";

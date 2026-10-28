@@ -7,6 +7,7 @@
 
 struct PatternCapture {
   size_t index = 0;
+  std::string name;
   bool matched = false;
   std::string value;
   size_t start = 0;

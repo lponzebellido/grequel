@@ -3,7 +3,7 @@
 Status: incremental implementation. Explicit promoters, transcript selection,
 strand-aware sequence predicates, calibrated PWM scans, evidence-preserving
 interval operations, two-member modules, imported regulatory tracks, replicate
-consensus, modular coordinate filters, fixed-index sequence slicing, numbered
+consensus, modular coordinate filters, end-relative sequence slicing, named
 regular-expression captures, and explicit interval translation are
 implemented. Later sections are a design contract, not yet accepted syntax.
 
@@ -31,7 +31,7 @@ how many new statements it adds.
 
 | Priority | Missing capability | Why it matters | Smallest useful acceptance target |
 | :--- | :--- | :--- | :--- |
-| 1 | Richer scalar expressions and CDS translation policy | Fixed-index slicing, numbered regex captures, and interval translation are explicit, but programmers still need reusable values, joined CDS assembly, phase handling, and an explicit initiation policy | Add reusable string/numeric expressions; specify a separate CDS mode for joined records and initiator codons |
+| 1 | Richer scalar expressions and CDS translation policy | String slicing, named regex captures, and interval translation are explicit, but programmers still need reusable values, joined CDS assembly, phase handling, and an explicit initiation policy | Add reusable string/numeric expressions; specify a separate CDS mode for joined records and initiator codons |
 | 2 | Enrichment with matched backgrounds | Counts alone cannot distinguish motif enrichment from length or composition effects | Declare foreground/background regions, matching policy, effect size, test, and multiple-testing correction |
 | 3 | CRE-to-gene evidence tables | `NEAR` is useful but genomic proximity is only one candidate-linking rule | Import relationship/contact tables and retain typed promoter, distance, contact, expression, and binding evidence per link |
 | 4 | General regulatory grammars | Two-site modules cannot express larger heterotypic architectures | Named members, more than two sites, transcript-relative orientation, and grouped aggregation |
@@ -330,10 +330,11 @@ EXTRACT bounded_patterns AS alanine_second_codon
 EXTRACT start_stop_candidates AS terminal_taa
   WHERE SLICE ORIENTED_SEQUENCE FROM -3 TO END = "TAA";
 
-FIND MOTIF "ATG([ACGT]{3})(TAA|TAG|TGA)" AS codon_patterns;
+FIND MOTIF "ATG([ACGT]{3})(TAA|TAG|TGA)"
+  CAPTURES ["middle", "stop"] AS codon_patterns;
 EXTRACT codon_patterns AS tga_middle
-  WHERE SLICE CAPTURE 1 FROM -2 TO END = "GA"
-    AND CAPTURE 2 = "TAA";
+  WHERE SLICE CAPTURE "middle" FROM -2 TO END = "GA"
+    AND CAPTURE "stop" = "TAA";
 ```
 
 Numeric conditions may apply `MOD` before their relational comparison.
@@ -364,19 +365,20 @@ values remain planned.
 
 `CAPTURE n` addresses the nth explicit capturing group in a `FIND MOTIF`
 regular expression, beginning at one. The engine's lookahead group is not part
-of public numbering. Every match retains the original pattern plus each
-group's matched state, value, and zero-based half-open offsets relative to the
-oriented full match. Negative-strand captures therefore use the 5'-to-3'
-matched text rather than reference-left coordinates. Optional unmatched groups
-remain explicit and do not satisfy text predicates; a group index absent from
-the pattern also evaluates as no match. `SLICE CAPTURE n` applies the same
-absolute and end-relative bounds as other text values. JSON preserves typed
-capture objects, while TSV and GFF3 carry the same structure as JSON.
-Geometry-preserving selection keeps the evidence, whereas clipping and merging
-discard it.
+of public numbering. `CAPTURES ["name", ...]` assigns one non-empty, unique
+name to every explicit group in numeric order. Named and numeric references are
+equivalent and remain available together. Every match retains the original
+pattern plus each group's index, optional name, matched state, value, and
+zero-based half-open offsets relative to the oriented full match.
+Negative-strand captures therefore use the 5'-to-3' matched text rather than
+reference-left coordinates. Optional unmatched groups remain explicit and do
+not satisfy text predicates; an absent group index or name also evaluates as
+no match. `SLICE CAPTURE` applies the same absolute and end-relative bounds as
+other text values. JSON preserves typed capture objects, while TSV and GFF3
+carry the same structure as JSON. Geometry-preserving selection keeps the
+evidence, whereas clipping and merging discard it.
 
-Named captures, materialized expressions, and reusable scalar values remain
-planned.
+Materialized expressions and reusable scalar values remain planned.
 
 ### Part 2C2: explicit interval translation
 

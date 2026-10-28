@@ -1,5 +1,6 @@
 #include "SemanticAnalyzer.h"
 #include "../bioinfo/GeneticCode.h"
+#include "../bioinfo/MotifFinder.h"
 #include <cerrno>
 #include <cmath>
 #include <cstdlib>
@@ -224,6 +225,30 @@ void SemanticAnalyzer::visit(FindStmtNode *node) {
   if (!sequenceLoaded) {
     reportError("FIND requires sequence data. Use: LOAD SEQUENCE "
                 "\"file.fasta\" AS alias;");
+  }
+  if (!node->captureNames.empty()) {
+    std::set<std::string> names;
+    for (const auto &literal : node->captureNames) {
+      const std::string name =
+          literal.size() >= 2 ? literal.substr(1, literal.size() - 2) : "";
+      if (name.empty()) {
+        reportError("CAPTURES names cannot be empty.");
+      } else if (!names.insert(name).second) {
+        reportError("CAPTURES names must be unique; '" + name +
+                    "' appears more than once.");
+      }
+    }
+    const std::string pattern =
+        node->motif.size() >= 2
+            ? node->motif.substr(1, node->motif.size() - 2)
+            : "";
+    const size_t groupCount = MotifFinder::captureGroupCount(pattern);
+    if (node->captureNames.size() != groupCount) {
+      reportError("CAPTURES declares " +
+                  std::to_string(node->captureNames.size()) +
+                  " name(s), but the motif contains " +
+                  std::to_string(groupCount) + " explicit capture group(s).");
+    }
   }
   for (const auto &opt : node->opts) {
     opt->accept(*this);
@@ -672,9 +697,18 @@ void SemanticAnalyzer::visit(SimpleConditionNode *node) {
                   " supports =, STARTS_WITH, ENDS_WITH, or CONTAINS.");
     }
     if (node->property == "CAPTURE") {
-      const double index = parseValue(node->reference);
-      if (!std::isfinite(index) || index < 1.0 || std::floor(index) != index) {
-        reportError("CAPTURE requires a positive whole group index.");
+      if (node->reference.size() >= 2 && node->reference.front() == '"' &&
+          node->reference.back() == '"') {
+        if (node->reference == "\"\"") {
+          reportError("CAPTURE requires a non-empty capture name.");
+        }
+      } else {
+        const double index = parseValue(node->reference);
+        if (!std::isfinite(index) || index < 1.0 ||
+            std::floor(index) != index) {
+          reportError("CAPTURE requires a positive whole group index or a "
+                      "non-empty name.");
+        }
       }
     }
   } else if (node->property == "TYPE" || node->property == "PARENT" ||

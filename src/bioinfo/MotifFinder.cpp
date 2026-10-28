@@ -86,6 +86,16 @@ std::string MotifFinder::translateIUPAC(const std::string &pattern) {
   return translated;
 }
 
+size_t MotifFinder::captureGroupCount(const std::string &pattern) {
+  try {
+    const std::regex expression(translateIUPAC(pattern),
+                                std::regex::icase | std::regex::optimize);
+    return expression.mark_count();
+  } catch (const std::regex_error &) {
+    return 0;
+  }
+}
+
 bool MotifFinder::isRegexPattern(const std::string &pattern) {
   for (char c : pattern) {
     if (c == '[' || c == ']' || c == '(' || c == ')' || c == '|' || c == '*' ||

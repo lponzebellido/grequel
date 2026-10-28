@@ -140,6 +140,7 @@ interface TranslationEvidence {
 
 interface PatternCapture {
   index: number;
+  name?: string;
   matched: boolean;
   value: string;
   start: number;
@@ -415,7 +416,7 @@ export const SequenceViewer: React.FC<SequenceViewerProps> = ({ results, highlig
                               {region.patternEvidence && (
                                 <>
                                   <span>Pattern: {region.patternEvidence.pattern}</span>
-                                  <span>Captures: {region.patternEvidence.captures.map(capture => capture.matched ? `${capture.index}=${capture.value} [${capture.start},${capture.end})` : `${capture.index}=unmatched`).join('; ')}</span>
+                                  <span>Captures: {region.patternEvidence.captures.map(capture => capture.matched ? `${capture.name ? `${capture.name} (#${capture.index})` : capture.index}=${capture.value} [${capture.start},${capture.end})` : `${capture.name ? `${capture.name} (#${capture.index})` : capture.index}=unmatched`).join('; ')}</span>
                                 </>
                               )}
                               {region.translationEvidence && (

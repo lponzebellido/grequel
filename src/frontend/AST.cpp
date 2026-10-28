@@ -78,6 +78,14 @@ void FindOptNode::print(std::string prefix, bool isLast) const {
 
 void FindStmtNode::print(std::string prefix, bool isLast) const {
     std::cout << prefix << (isLast ? "└── " : "├── ") << "FindStmt(Motif: " << motif;
+    if (!captureNames.empty()) {
+        std::cout << ", Captures: [";
+        for (size_t i = 0; i < captureNames.size(); ++i) {
+            if (i > 0) std::cout << ", ";
+            std::cout << captureNames[i];
+        }
+        std::cout << "]";
+    }
     if (!alias.empty()) std::cout << ", AS: " << alias;
     std::cout << ")" << std::endl;
     std::string childPrefix = prefix + (isLast ? "    " : "│   ");

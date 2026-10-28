@@ -197,6 +197,7 @@ void IRGenerator::visit(FindStmtNode* node) {
   findInstr.opcode = IROpCode::FIND_MOTIF;
   findInstr.arg1 = node->motif;
   findInstr.arg2 = currentTemp;
+  findInstr.listArgs = node->captureNames;
   instructions.push_back(findInstr);
 
   for (const auto& opt : node->opts) {

@@ -511,6 +511,22 @@ std::unique_ptr<FindStmtNode> Parser::parseFind() {
       opt->type = "CHR";
       consume(TokenType::STRING, "Expected the chromosome name.");
       opt->value1 = previous().lexeme;
+    } else if (match(TokenType::CAPTURES)) {
+      if (!node->captureNames.empty()) {
+        reportError(previous(), "CAPTURES can appear only once in FIND.");
+        throw std::runtime_error("Parse error");
+      }
+      consume(TokenType::LBRACKET, "Expected '[' after CAPTURES.");
+      consume(TokenType::STRING,
+              "Expected at least one capture name in CAPTURES.");
+      node->captureNames.push_back(previous().lexeme);
+      while (match(TokenType::COMMA)) {
+        consume(TokenType::STRING,
+                "Expected a capture name after ',' in CAPTURES.");
+        node->captureNames.push_back(previous().lexeme);
+      }
+      consume(TokenType::RBRACKET, "Expected ']' after capture names.");
+      continue;
     } else {
       break;
     }
@@ -1006,8 +1022,12 @@ std::unique_ptr<SimpleConditionNode> Parser::parseSimpleCondition() {
   std::string sliceEnd;
   if (match(TokenType::CAPTURE)) {
     prop = previous().lexeme;
-    consume(TokenType::NUM,
-            "Expected a positive capture-group index after CAPTURE.");
+    if (!match(TokenType::NUM) && !match(TokenType::STRING)) {
+      reportError(peek(),
+                  "Expected a positive group index or capture name after "
+                  "CAPTURE.");
+      throw std::runtime_error("Parse error");
+    }
     reference = previous().lexeme;
   } else if (match(TokenType::SLICE)) {
     if (match(TokenType::SEQUENCE) || match(TokenType::ORIENTED_SEQUENCE) ||
@@ -1015,8 +1035,12 @@ std::unique_ptr<SimpleConditionNode> Parser::parseSimpleCondition() {
       prop = previous().lexeme;
     } else if (match(TokenType::CAPTURE)) {
       prop = previous().lexeme;
-      consume(TokenType::NUM,
-              "Expected a positive capture-group index after CAPTURE.");
+      if (!match(TokenType::NUM) && !match(TokenType::STRING)) {
+        reportError(peek(),
+                    "Expected a positive group index or capture name after "
+                    "CAPTURE.");
+        throw std::runtime_error("Parse error");
+      }
       reference = previous().lexeme;
     } else {
       reportError(peek(),

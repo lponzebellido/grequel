@@ -348,8 +348,10 @@ std::string Interpreter::serializePatternEvidenceJSON(
     if (index > 0)
       out << ',';
     const PatternCapture &capture = evidence.captures[index];
-    out << "{\"index\":" << capture.index
-        << ",\"matched\":" << (capture.matched ? "true" : "false")
+    out << "{\"index\":" << capture.index;
+    if (!capture.name.empty())
+      out << ",\"name\":\"" << jsonEscape(capture.name) << "\"";
+    out << ",\"matched\":" << (capture.matched ? "true" : "false")
         << ",\"value\":\"" << jsonEscape(capture.value)
         << "\",\"start\":" << capture.start
         << ",\"end\":" << capture.end << '}';
@@ -1779,6 +1781,8 @@ void Interpreter::executeDefineModule(const IRInstruction &instr) {
 void Interpreter::executeFindMotif(const IRInstruction &instr) {
   currentFind = FindContext();
   currentFind.pattern = stripQuotes(instr.arg1);
+  for (const auto &name : instr.listArgs)
+    currentFind.captureNames.push_back(stripQuotes(name));
   currentFind.hasWithin = false;
   if (!MotifFinder::isValidPattern(currentFind.pattern)) {
     reportRuntimeError("Invalid or empty motif pattern '" +
@@ -1820,6 +1824,15 @@ void Interpreter::executeFindExec(const IRInstruction &instr) {
     }
     if (!currentFind.chrFilter.empty()) {
       std::cout << " CHR \"" << currentFind.chrFilter << "\"";
+    }
+    if (!currentFind.captureNames.empty()) {
+      std::cout << " CAPTURES [";
+      for (size_t index = 0; index < currentFind.captureNames.size(); ++index) {
+        if (index > 0)
+          std::cout << ", ";
+        std::cout << "\"" << currentFind.captureNames[index] << "\"";
+      }
+      std::cout << "]";
     }
     std::cout << std::endl;
   }
@@ -1936,6 +1949,15 @@ void Interpreter::executeFindExec(const IRInstruction &instr) {
         filtered.push_back(m);
     }
     matches = filtered;
+  }
+
+  if (!currentFind.captureNames.empty()) {
+    for (auto &match : matches) {
+      for (auto &capture : match.patternEvidence.captures) {
+        if (capture.index <= currentFind.captureNames.size())
+          capture.name = currentFind.captureNames[capture.index - 1];
+      }
+    }
   }
 
   std::sort(matches.begin(), matches.end(),
@@ -2393,10 +2415,16 @@ bool Interpreter::compareCaptureCondition(
     const std::shared_ptr<IRCondition> &condition) const {
   if (!evidence.present)
     return false;
-  const size_t index = static_cast<size_t>(
-      std::strtoull(condition->reference.c_str(), nullptr, 10));
+  const bool named = condition->reference.size() >= 2 &&
+                     condition->reference.front() == '"' &&
+                     condition->reference.back() == '"';
+  const std::string name = named ? stripQuotes(condition->reference) : "";
+  const size_t index =
+      named ? 0
+            : static_cast<size_t>(
+                  std::strtoull(condition->reference.c_str(), nullptr, 10));
   for (const auto &capture : evidence.captures) {
-    if (capture.index == index)
+    if ((named && capture.name == name) || (!named && capture.index == index))
       return capture.matched &&
              compareSequenceCondition(capture.value, condition);
   }

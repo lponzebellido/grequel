@@ -22,6 +22,7 @@
 
 struct FindContext {
   std::string pattern;
+  std::vector<std::string> captureNames;
   std::string strandFilter;
   std::string chrFilter;
   bool hasWithin = false;

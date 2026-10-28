@@ -211,6 +211,7 @@ public:
 class FindStmtNode : public StatementNode {
 public:
   std::string motif;
+  std::vector<std::string> captureNames;
   std::vector<std::unique_ptr<FindOptNode>> opts;
   std::string alias;
   std::unique_ptr<ConditionNode> whereClause;

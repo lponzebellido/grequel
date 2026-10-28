@@ -86,6 +86,9 @@ int main() {
           "overlapping IUPAC matches");
   require(!MotifFinder::isValidPattern("("),
           "invalid regular expressions are rejected");
+  require(MotifFinder::captureGroupCount(
+              "ATG([ACGT]{3})(?:[ACGT]{3})(TAA|TAG|TGA)") == 2,
+          "capture-group counting excludes non-capturing groups");
 
   const auto captured = MotifFinder::findAll(
       "ATGAAATAA", "ATG([ACGT]{3})(TAA|TAG|TGA)", "chr1", false);

@@ -1,9 +1,11 @@
 LOAD SEQUENCE "data_examples/code_demo.fasta" AS genome;
 
-FIND MOTIF "ATG([ACGT]{3})(TAA|TAG|TGA)" AS candidates;
+FIND MOTIF "ATG([ACGT]{3})(TAA|TAG|TGA)"
+  CAPTURES ["middle", "stop"]
+  AS candidates;
 
 EXTRACT candidates AS tga_middle
-  WHERE SLICE CAPTURE 1 FROM -2 TO END = "GA"
-    AND CAPTURE 2 = "TAA";
+  WHERE SLICE CAPTURE "middle" FROM -2 TO END = "GA"
+    AND CAPTURE "stop" = "TAA";
 
 EXPORT tga_middle TO "captures.tsv" FORMAT TSV;

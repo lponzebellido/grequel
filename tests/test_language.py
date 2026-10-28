@@ -1285,18 +1285,24 @@ def main() -> int:
             workspace,
             "regex_capture_filter",
             'LOAD SEQUENCE "captures.fasta" AS genome;\n'
-            'FIND MOTIF "ATG([ACGT]{3})(TAA|TAG|TGA)" AS candidates;\n'
-            'FIND MOTIF "ATG([ACGT]{3})(TAA|TAG|TGA)" STRAND POSITIVE '
-            'AS direct_aaa WHERE CAPTURE 1 = "AAA";\n'
-            'EXTRACT candidates AS aaa_codons WHERE CAPTURE 1 = "AAA";\n'
-            'EXTRACT candidates AS tag_stops WHERE CAPTURE 2 = "TAG";\n'
+            'FIND MOTIF "ATG([ACGT]{3})(TAA|TAG|TGA)" '
+            'CAPTURES ["codon", "stop"] AS candidates;\n'
+            'FIND MOTIF "ATG([ACGT]{3})(TAA|TAG|TGA)" '
+            'CAPTURES ["codon", "stop"] STRAND POSITIVE '
+            'AS direct_aaa WHERE CAPTURE "codon" = "AAA";\n'
+            'EXTRACT candidates AS aaa_codons '
+            'WHERE CAPTURE "codon" = "AAA";\n'
+            'EXTRACT candidates AS numeric_aaa WHERE CAPTURE 1 = "AAA";\n'
+            'EXTRACT candidates AS tag_stops '
+            'WHERE CAPTURE "stop" = "TAG";\n'
             'EXTRACT candidates AS aa_suffixes '
-            'WHERE SLICE CAPTURE 1 FROM -2 TO END = "AA";\n'
+            'WHERE SLICE CAPTURE "codon" FROM -2 TO END = "AA";\n'
             'EXTRACT candidates AS capture_prefixes '
             'WHERE SLICE CAPTURE 2 FROM 0 TO 1 = "T";\n'
             'EXTRACT candidates AS short_captures '
-            'WHERE SLICE CAPTURE 1 FROM 0 TO 4 CONTAINS "A";\n'
-            'EXTRACT candidates AS missing_group WHERE CAPTURE 3 = "AAA";\n',
+            'WHERE SLICE CAPTURE "codon" FROM 0 TO 4 CONTAINS "A";\n'
+            'EXTRACT candidates AS missing_group '
+            'WHERE CAPTURE "missing" = "AAA";\n',
         )
         require(
             [(item["start"], item["strand"])
@@ -1311,6 +1317,9 @@ def main() -> int:
             and [(item["start"], item["strand"])
                  for item in data["resultSets"]["aa_suffixes"]]
             == [(0, "+"), (21, "-")]
+            and [(item["start"], item["strand"])
+                 for item in data["resultSets"]["numeric_aaa"]]
+            == [(0, "+"), (21, "-")]
             and len(data["resultSets"]["capture_prefixes"]) == 3
             and data["resultSets"]["short_captures"] == []
             and data["resultSets"]["missing_group"] == [],
@@ -1320,19 +1329,22 @@ def main() -> int:
         require(
             capture["pattern"] == "ATG([ACGT]{3})(TAA|TAG|TGA)"
             and capture["captures"] == [
-                {"index": 1, "matched": True, "value": "AAA",
+                {"index": 1, "name": "codon", "matched": True,
+                 "value": "AAA",
                  "start": 3, "end": 6},
-                {"index": 2, "matched": True, "value": "TAA",
+                {"index": 2, "name": "stop", "matched": True,
+                 "value": "TAA",
                  "start": 6, "end": 9},
             ],
-            "regex captures retain typed values and oriented offsets",
+            "regex captures retain names, values, and oriented offsets",
         )
 
         data, _ = run_query(
             workspace,
             "regex_capture_export",
             'LOAD SEQUENCE "captures.fasta" AS genome;\n'
-            'FIND MOTIF "ATG([ACGT]{3})(TAA|TAG|TGA)" STRAND POSITIVE '
+            'FIND MOTIF "ATG([ACGT]{3})(TAA|TAG|TGA)" '
+            'CAPTURES ["codon", "stop"] STRAND POSITIVE '
             'AS candidates;\n'
             'EXPORT candidates TO "captures.tsv" FORMAT TSV;\n'
             'EXPORT candidates TO "captures.gff3" FORMAT GFF3;\n',
@@ -1575,6 +1587,39 @@ def main() -> int:
         )
         require("positive whole group index" in semantic_error,
                 "CAPTURE indices start at one")
+
+        semantic_error = run_invalid_query(
+            workspace,
+            "empty_capture_name",
+            'LOAD SEQUENCE "captures.fasta" AS genome;\n'
+            'FIND MOTIF "ATG([ACGT]{3})" AS invalid '
+            'WHERE CAPTURE "" = "AAA";\n',
+            3,
+        )
+        require("non-empty capture name" in semantic_error,
+                "CAPTURE names cannot be empty")
+
+        semantic_error = run_invalid_query(
+            workspace,
+            "capture_name_count",
+            'LOAD SEQUENCE "captures.fasta" AS genome;\n'
+            'FIND MOTIF "ATG([ACGT]{3})(TAA)" '
+            'CAPTURES ["codon"] AS invalid;\n',
+            3,
+        )
+        require("motif contains 2 explicit capture group" in semantic_error,
+                "CAPTURES must name every explicit group")
+
+        semantic_error = run_invalid_query(
+            workspace,
+            "duplicate_capture_name",
+            'LOAD SEQUENCE "captures.fasta" AS genome;\n'
+            'FIND MOTIF "ATG([ACGT]{3})(TAA)" '
+            'CAPTURES ["part", "part"] AS invalid;\n',
+            3,
+        )
+        require("names must be unique" in semantic_error,
+                "CAPTURES names must be unique")
 
         data, _ = run_query(
             workspace,

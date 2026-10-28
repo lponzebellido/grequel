@@ -186,10 +186,11 @@ EXTRACT bounded_patterns AS alanine_second_codon
 EXTRACT start_stop_candidates AS terminal_taa
     WHERE SLICE ORIENTED_SEQUENCE FROM -3 TO END = "TAA";
 
-FIND MOTIF "ATG([ACGT]{3})(TAA|TAG|TGA)" AS codon_patterns;
+FIND MOTIF "ATG([ACGT]{3})(TAA|TAG|TGA)"
+    CAPTURES ["middle", "stop"] AS codon_patterns;
 EXTRACT codon_patterns AS tga_middle
-    WHERE SLICE CAPTURE 1 FROM -2 TO END = "GA"
-      AND CAPTURE 2 = "TAA";
+    WHERE SLICE CAPTURE "middle" FROM -2 TO END = "GA"
+      AND CAPTURE "stop" = "TAA";
 ```
 
 `FIND MOTIF` is appropriate for exact strings, regular expressions, or
@@ -220,12 +221,14 @@ reversed, or outside the string does not match. Slices can be combined with
 other conditions using `AND`, `OR`, and `NOT`.
 
 `CAPTURE n` queries the nth explicit group of the regular expression passed to
-`FIND MOTIF`; numbering begins at one. Capture values and their zero-based,
-half-open offsets are retained in `patternEvidence`. Offsets follow the
-oriented matched text, so a negative-strand capture is still described from
-5' to 3'. `SLICE CAPTURE n` applies the same absolute or end-relative bounds
-used for sequence values. A missing or unmatched group does not satisfy the
-condition.
+`FIND MOTIF`; numbering begins at one. `CAPTURES ["name", ...]` assigns one
+unique name to every explicit group in numeric order, after which
+`CAPTURE "name"` and its numeric form are equivalent. Capture names, values,
+and zero-based half-open offsets are retained in `patternEvidence`. Offsets
+follow the oriented matched text, so a negative-strand capture is still
+described from 5' to 3'. `SLICE CAPTURE` applies the same absolute or
+end-relative bounds used for sequence values. A missing or unmatched group
+does not satisfy the condition.
 
 ### 2.1 Interval Translation (`TRANSLATE`)
 
@@ -574,6 +577,7 @@ FindOpts           ::= FindOpt FindOpts | λ
 FindOpt            ::= WITHIN (NUM | FLOAT) Unit Direction FROM EntityRef EntityName
                      | STRAND StrandType
                      | CHR STRING
+                     | CAPTURES "[" STRING ("," STRING)* "]"
 
 ScanStmt           ::= SCAN ID ScanOpts AliasOpt WhereClause SEMICOLON
 ScanOpts           ::= ScanOpt ScanOpts | λ
@@ -632,9 +636,10 @@ StringProperty     ::= ID | NAME | STRAND | TYPE | PARENT | SOURCE | PHASE
                      | EVIDENCE_CLASS | ASSAY | SAMPLE | CONDITION
                      | REPLICATE | CONTROL
 SequenceProperty   ::= SEQUENCE | ORIENTED_SEQUENCE | PROTEIN_SEQUENCE
-StringValue        ::= SequenceProperty | CAPTURE NUM
+StringValue        ::= SequenceProperty | CAPTURE CaptureRef
 StringExpression   ::= StringValue
                      | SLICE StringValue FROM SliceBound TO SliceBound
+CaptureRef         ::= NUM | STRING
 SliceBound         ::= NUM | "-" NUM | END
 SequenceRelOp      ::= "=" | STARTS_WITH | ENDS_WITH | CONTAINS
 SimilarityRefOpt   ::= TO ID | λ
@@ -704,7 +709,7 @@ track, transcript, and strand examples use small synthetic fixtures. See
 | `14_transcripts.grql` | Select declared transcript types and derive promoters | `EXTRACT TRANSCRIPTS`, `SELECT` |
 | `15_strands.grql` | Compare reference and strand-oriented sequence | `SEQUENCE`, `ORIENTED_SEQUENCE` |
 | `16_translate.grql` | Translate intervals under two genetic codes | `TRANSLATE`, `PROTEIN_SEQUENCE` |
-| `17_captures.grql` | Filter regular-expression groups | `CAPTURE` |
+| `17_captures.grql` | Name and filter regular-expression groups | `CAPTURES`, `CAPTURE` |
 
 ---
 

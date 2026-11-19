@@ -1,6 +1,16 @@
 #include "AST.h"
 #include <iostream>
 
+std::string ScalarExprNode::render() const {
+    if (kind == Kind::LITERAL)
+        return value + (unit.empty() ? "" : " " + unit);
+    if (kind == Kind::REFERENCE)
+        return value;
+    if (kind == Kind::UNARY)
+        return op + left->render();
+    return "(" + left->render() + " " + op + " " + right->render() + ")";
+}
+
 void SimpleConditionNode::print(std::string prefix, bool isLast) const {
     std::cout << prefix << (isLast ? "└── " : "├── ") << "SimpleCondition(";
     if (!sliceStart.empty()) std::cout << "SLICE ";
@@ -68,7 +78,9 @@ void DefineModuleStmtNode::print(std::string prefix, bool isLast) const {
 
 void LetStmtNode::print(std::string prefix, bool isLast) const {
     std::cout << prefix << (isLast ? "└── " : "├── ")
-              << "LetStmt(" << name << " = " << value << ")" << std::endl;
+              << "LetStmt(" << name << " = "
+              << (expression ? expression->render() : value) << ")"
+              << std::endl;
 }
 
 void FindOptNode::print(std::string prefix, bool isLast) const {

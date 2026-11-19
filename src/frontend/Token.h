@@ -48,7 +48,10 @@ enum class TokenType {
     LBRACKET,
     RBRACKET,
     PERCENT,
+    PLUS,
     MINUS,
+    STAR,
+    SLASH,
 
     END_OF_FILE,
     UNKNOWN,

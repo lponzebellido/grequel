@@ -1,10 +1,12 @@
-LET pattern = "ATGNNNTAA";
 LET prefix = "ATG";
+LET middle = "NNN";
 LET suffix = "TAA";
-LET match_length = 9 BP;
+LET pattern = prefix + middle + suffix;
+LET codon_width = 3;
+LET match_length = codon_width * 3 BP;
 LET first_base = 0;
-LET first_codon_end = 3;
-LET terminal_codon_start = -3;
+LET first_codon_end = first_base + codon_width;
+LET terminal_codon_start = -codon_width;
 
 LOAD SEQUENCE "data_examples/strand_demo.fasta" AS genome;
 

@@ -110,6 +110,33 @@ public:
 
 class StatementNode : public ASTNode {};
 
+class ScalarExprNode {
+public:
+  enum class Kind { LITERAL, REFERENCE, UNARY, BINARY };
+
+  Kind kind;
+  std::string value;
+  std::string unit;
+  std::string op;
+  std::unique_ptr<ScalarExprNode> left;
+  std::unique_ptr<ScalarExprNode> right;
+
+  ScalarExprNode(Kind expressionKind, std::string expressionValue,
+                 std::string expressionUnit = "")
+      : kind(expressionKind), value(expressionValue), unit(expressionUnit) {}
+  ScalarExprNode(std::string expressionOperator,
+                 std::unique_ptr<ScalarExprNode> operand)
+      : kind(Kind::UNARY), op(expressionOperator),
+        left(std::move(operand)) {}
+  ScalarExprNode(std::unique_ptr<ScalarExprNode> lhs,
+                 std::string expressionOperator,
+                 std::unique_ptr<ScalarExprNode> rhs)
+      : kind(Kind::BINARY), op(expressionOperator), left(std::move(lhs)),
+        right(std::move(rhs)) {}
+
+  std::string render() const;
+};
+
 class LoadStmtNode : public StatementNode {
 public:
   std::string loadType;
@@ -159,8 +186,9 @@ class LetStmtNode : public StatementNode {
 public:
   std::string name;
   std::string value;
-  LetStmtNode(std::string n, std::string v)
-      : name(n), value(v) {}
+  std::unique_ptr<ScalarExprNode> expression;
+  LetStmtNode(std::string n, std::unique_ptr<ScalarExprNode> expr)
+      : name(n), expression(std::move(expr)) {}
   void print(std::string prefix = "", bool isLast = true) const override;
   void accept(ASTVisitor& visitor) override;
 };

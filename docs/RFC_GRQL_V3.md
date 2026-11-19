@@ -5,8 +5,8 @@ strand-aware sequence predicates, calibrated PWM scans, evidence-preserving
 interval operations, two-member modules, imported regulatory tracks, replicate
 consensus, modular coordinate filters, end-relative sequence slicing, named
 regular-expression captures, reusable scalar constants, and explicit interval
-translation are implemented. Later sections are a design contract, not yet
-accepted syntax.
+translation are implemented. `LET` also supports typed arithmetic and string
+composition. Later sections are a design contract, not yet accepted syntax.
 
 ## Product definition
 
@@ -32,7 +32,7 @@ how many new statements it adds.
 
 | Priority | Missing capability | Why it matters | Smallest useful acceptance target |
 | :--- | :--- | :--- | :--- |
-| 1 | Scalar expressions and CDS translation policy | Scalar constants, string slicing, named regex captures, and interval translation are explicit, but programmers still need calculated expressions, joined CDS assembly, phase handling, and an explicit initiation policy | Add typed arithmetic and string composition; specify a separate CDS mode for joined records and initiator codons |
+| 1 | CDS assembly and translation policy | Scalar expressions, string slicing, named regex captures, and interval translation are explicit, but programmers still need joined CDS assembly, phase handling, and an explicit initiation policy | Specify a separate CDS mode for joined records, phase handling, and initiator codons |
 | 2 | Enrichment with matched backgrounds | Counts alone cannot distinguish motif enrichment from length or composition effects | Declare foreground/background regions, matching policy, effect size, test, and multiple-testing correction |
 | 3 | CRE-to-gene evidence tables | `NEAR` is useful but genomic proximity is only one candidate-linking rule | Import relationship/contact tables and retain typed promoter, distance, contact, expression, and binding evidence per link |
 | 4 | General regulatory grammars | Two-site modules cannot express larger heterotypic architectures | Named members, more than two sites, transcript-relative orientation, and grouped aggregation |
@@ -319,13 +319,14 @@ Implemented syntax:
 ```grql
 LET start_pattern = "ATG";
 LET frame_width = 3;
-LET terminal_codon_start = -3;
+LET terminal_codon_start = -frame_width;
+LET bounded_pattern = start_pattern + "NNN" + "TAA";
 
 FIND MOTIF "ATG(?:(?!TAA|TAG|TGA)[ACGT]{3})*(?:TAA|TAG|TGA)"
   STRAND POSITIVE AS start_stop_candidates
   WHERE LENGTH MOD frame_width = 0 AND START MOD frame_width = 0;
 
-FIND MOTIF "ATGNNNTAA" AS bounded_patterns
+FIND MOTIF bounded_pattern AS bounded_patterns
   WHERE ORIENTED_SEQUENCE STARTS_WITH "ATG"
     AND ORIENTED_SEQUENCE ENDS_WITH "TAA";
 
@@ -382,18 +383,23 @@ other text values. JSON preserves typed capture objects, while TSV and GFF3
 carry the same structure as JSON. Geometry-preserving selection keeps the
 evidence, whereas clipping and merging discard it.
 
-Calculated scalar and materialized sequence expressions remain planned.
+Materialized sequence expressions remain planned.
 
-`LET name = literal;` declares an immutable top-level string or numeric
-constant. Numeric literals retain an optional genomic or percentage unit.
-Constants must be declared before use and share the global symbol namespace
-with datasets and result aliases. They can replace a motif string, a condition
-value, a `MOD` divisor, a `SLICE` bound, an analysis window, or a genomic
-distance. Each consumer applies the same type, unit, range, and integral-base
-pair checks as it would to an inline literal. Required-distance clauses accept
-a unit-bearing constant directly; a unitless constant must supply the unit at
-the use site. `LET` is typed value reuse, not textual macro expansion, and
-declarations inside `IF` or `FOREACH` are rejected.
+`LET name = expression;` declares an immutable top-level string or numeric
+constant. Expressions support unary signs, arithmetic precedence,
+parentheses, numeric `+`, `-`, `*`, and `/`, and string concatenation with
+`+`. Genomic units are normalized to base pairs before compatible arithmetic;
+percentages remain a separate dimension. Multiplication accepts at most one
+unit-bearing operand, and division accepts a unitless divisor or equal
+dimensions. Expressions are evaluated in `LET`, after which query clauses use
+the resulting constant name. Constants must be declared before use and share
+the global symbol namespace with datasets and result aliases. They can replace
+a motif string, a condition value, a `MOD` divisor, a `SLICE` bound, an
+analysis window, or a genomic distance. Each consumer applies the same type,
+unit, range, and
+integral-base-pair checks as it would to an inline literal. `LET` is typed
+value reuse, not textual macro expansion, and declarations inside `IF` or
+`FOREACH` are rejected.
 
 ### Part 2C2: explicit interval translation
 

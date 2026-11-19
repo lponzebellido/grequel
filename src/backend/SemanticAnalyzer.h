@@ -15,6 +15,14 @@ private:
   int controlFlowDepth;
   std::unordered_map<std::string, std::string> constantValues;
 
+  struct ScalarValue {
+    enum class Kind { STRING, NUMERIC };
+    Kind kind = Kind::NUMERIC;
+    std::string text;
+    long double number = 0.0L;
+    std::string unit;
+  };
+
   void reportError(const std::string &message);
   double parseValue(const std::string &val);
   std::string resolveConstant(const std::string &value) const;
@@ -24,6 +32,10 @@ private:
                             const std::string &label, bool requireUnit,
                             long double &basePairs,
                             bool pluralWholeNumbers = false);
+  bool evaluateScalarExpression(const ScalarExprNode *expression,
+                                ScalarValue &result);
+  bool decodeScalarValue(const std::string &encoded, ScalarValue &result);
+  std::string encodeScalarValue(const ScalarValue &value) const;
 
 public:
   SemanticAnalyzer(SymbolTable &symTab);

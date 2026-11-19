@@ -4,7 +4,8 @@
 
 Lexer::Lexer(std::istream& inputStream)
     : in(inputStream), colIndex(0), line(1), bufferLen(0), eofReached(false),
-      hasError(false) {
+      hasError(false), pendingSlash(false), pendingSlashLine(0),
+      pendingSlashColumn(0) {
     initKeywords();
 }
 
@@ -207,6 +208,8 @@ void Lexer::skipWhitespaceAndComments() {
         if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
             continue;
         } else if (c == '/') {
+            const int slashLine = line;
+            const int slashColumn = colIndex;
             char next = getChar();
             if (next == '/') {
                 while ((c = getChar()) != '\n' && c != EOF);
@@ -220,8 +223,11 @@ void Lexer::skipWhitespaceAndComments() {
                     }
                 }
             } else {
-                ungetChar(); 
-                ungetChar();
+                if (next != EOF) ungetChar();
+                pendingSlash = true;
+                pendingSlashLine = slashLine;
+                pendingSlashColumn = slashColumn;
+                break;
             }
         } else {
             ungetChar();
@@ -340,6 +346,14 @@ std::vector<Token> Lexer::tokenize() {
     
     while (true) {
         skipWhitespaceAndComments();
+
+        if (pendingSlash) {
+            tokens.push_back(createToken(TokenType::SLASH, "/",
+                                         pendingSlashLine,
+                                         pendingSlashColumn));
+            pendingSlash = false;
+            continue;
+        }
         
         int startLine = line;
         char c = getChar();
@@ -367,7 +381,10 @@ std::vector<Token> Lexer::tokenize() {
                 case '[': tokens.push_back(createToken(TokenType::LBRACKET, lexeme, startLine, startCol)); break;
                 case ']': tokens.push_back(createToken(TokenType::RBRACKET, lexeme, startLine, startCol)); break;
                 case '%': tokens.push_back(createToken(TokenType::PERCENT, lexeme, startLine, startCol)); break;
+                case '+': tokens.push_back(createToken(TokenType::PLUS, lexeme, startLine, startCol)); break;
                 case '-': tokens.push_back(createToken(TokenType::MINUS, lexeme, startLine, startCol)); break;
+                case '*': tokens.push_back(createToken(TokenType::STAR, lexeme, startLine, startCol)); break;
+                case '/': tokens.push_back(createToken(TokenType::SLASH, lexeme, startLine, startCol)); break;
                 case '=': 
                     tokens.push_back(createToken(TokenType::ASSIGN, lexeme, startLine, startCol)); 
                     break;
@@ -547,7 +564,10 @@ std::string tokenTypeToString(TokenType type) {
         case TokenType::LPAREN: return "LPAREN";
         case TokenType::RPAREN: return "RPAREN";
         case TokenType::PERCENT: return "PERCENT";
+        case TokenType::PLUS: return "PLUS";
         case TokenType::MINUS: return "MINUS";
+        case TokenType::STAR: return "STAR";
+        case TokenType::SLASH: return "SLASH";
         case TokenType::BACKGROUND: return "BACKGROUND";
         case TokenType::UNIFORM: return "UNIFORM";
         case TokenType::END_OF_FILE: return "EOF";

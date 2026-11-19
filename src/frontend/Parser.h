@@ -55,6 +55,11 @@ private:
   parseTermPrime(std::unique_ptr<ConditionNode> left);
   std::unique_ptr<ConditionNode> parseFactor();
   std::unique_ptr<SimpleConditionNode> parseSimpleCondition();
+  std::unique_ptr<ScalarExprNode> parseScalarExpression();
+  std::unique_ptr<ScalarExprNode> parseScalarAdditive();
+  std::unique_ptr<ScalarExprNode> parseScalarMultiplicative();
+  std::unique_ptr<ScalarExprNode> parseScalarUnary();
+  std::unique_ptr<ScalarExprNode> parseScalarPrimary();
 
 public:
   Parser(const std::vector<Token> &tokenList);

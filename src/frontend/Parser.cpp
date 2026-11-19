@@ -359,26 +359,76 @@ std::unique_ptr<LetStmtNode> Parser::parseLet() {
   consume(TokenType::ID, "Expected a constant name after LET.");
   const std::string name = previous().lexeme;
   consume(TokenType::ASSIGN, "Expected '=' after the constant name.");
+  auto expression = parseScalarExpression();
+  consume(TokenType::SEMICOLON, "Expected ';' after the constant value.");
+  return std::unique_ptr<LetStmtNode>(
+      new LetStmtNode(name, std::move(expression)));
+}
 
-  std::string value;
+std::unique_ptr<ScalarExprNode> Parser::parseScalarExpression() {
+  return parseScalarAdditive();
+}
+
+std::unique_ptr<ScalarExprNode> Parser::parseScalarAdditive() {
+  auto expression = parseScalarMultiplicative();
+  while (match(TokenType::PLUS) || match(TokenType::MINUS)) {
+    const std::string op = previous().lexeme;
+    auto right = parseScalarMultiplicative();
+    auto left = std::move(expression);
+    expression.reset(new ScalarExprNode(std::move(left), op,
+                                        std::move(right)));
+  }
+  return expression;
+}
+
+std::unique_ptr<ScalarExprNode> Parser::parseScalarMultiplicative() {
+  auto expression = parseScalarUnary();
+  while (match(TokenType::STAR) || match(TokenType::SLASH)) {
+    const std::string op = previous().lexeme;
+    auto right = parseScalarUnary();
+    auto left = std::move(expression);
+    expression.reset(new ScalarExprNode(std::move(left), op,
+                                        std::move(right)));
+  }
+  return expression;
+}
+
+std::unique_ptr<ScalarExprNode> Parser::parseScalarUnary() {
+  if (match(TokenType::PLUS) || match(TokenType::MINUS)) {
+    const std::string op = previous().lexeme;
+    return std::unique_ptr<ScalarExprNode>(
+        new ScalarExprNode(op, parseScalarUnary()));
+  }
+  return parseScalarPrimary();
+}
+
+std::unique_ptr<ScalarExprNode> Parser::parseScalarPrimary() {
   if (match(TokenType::STRING)) {
-    value = previous().lexeme;
-  } else {
-    if (match(TokenType::MINUS))
-      value = previous().lexeme;
-    if (!match(TokenType::NUM) && !match(TokenType::FLOAT)) {
-      reportError(peek(), "Expected a string or numeric literal after '='.");
-      throw std::runtime_error("Parse error");
-    }
-    value += previous().lexeme;
+    return std::unique_ptr<ScalarExprNode>(new ScalarExprNode(
+        ScalarExprNode::Kind::LITERAL, previous().lexeme));
+  }
+  if (match(TokenType::NUM) || match(TokenType::FLOAT)) {
+    const std::string value = previous().lexeme;
+    std::string unit;
     if (match(TokenType::BP) || match(TokenType::KB) ||
         match(TokenType::MB) || match(TokenType::PERCENT)) {
-      value += " " + previous().lexeme;
+      unit = previous().lexeme;
     }
+    return std::unique_ptr<ScalarExprNode>(new ScalarExprNode(
+        ScalarExprNode::Kind::LITERAL, value, unit));
   }
-
-  consume(TokenType::SEMICOLON, "Expected ';' after the constant value.");
-  return std::unique_ptr<LetStmtNode>(new LetStmtNode(name, value));
+  if (match(TokenType::ID)) {
+    return std::unique_ptr<ScalarExprNode>(new ScalarExprNode(
+        ScalarExprNode::Kind::REFERENCE, previous().lexeme));
+  }
+  if (match(TokenType::LPAREN)) {
+    auto expression = parseScalarExpression();
+    consume(TokenType::RPAREN,
+            "Expected ')' after the scalar expression.");
+    return expression;
+  }
+  reportError(peek(), "Expected a scalar literal, constant, or '('.");
+  throw std::runtime_error("Parse error");
 }
 
 std::unique_ptr<LoadStmtNode> Parser::parseLoad() {

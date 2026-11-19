@@ -6,9 +6,11 @@
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <set>
+#include <sstream>
 
 static const std::set<std::string> BUILTIN_ENTITIES = {
     "GENE", "PROMOTER", "ENHANCER", "EXON", "INTRON",
@@ -144,6 +146,163 @@ bool SemanticAnalyzer::parseGenomicDistance(const std::string &value,
   return true;
 }
 
+bool SemanticAnalyzer::decodeScalarValue(const std::string &encoded,
+                                         ScalarValue &result) {
+  if (encoded.size() >= 2 && encoded.front() == '"' &&
+      encoded.back() == '"') {
+    result.kind = ScalarValue::Kind::STRING;
+    result.text = encoded.substr(1, encoded.size() - 2);
+    result.unit.clear();
+    return true;
+  }
+
+  std::string numeric = encoded;
+  const size_t separator = numeric.find(' ');
+  result.unit.clear();
+  if (separator != std::string::npos) {
+    result.unit = numeric.substr(separator + 1);
+    numeric = numeric.substr(0, separator);
+  }
+  char *remaining = nullptr;
+  errno = 0;
+  result.number = std::strtold(numeric.c_str(), &remaining);
+  if (errno == ERANGE || remaining == numeric.c_str() ||
+      *remaining != '\0' ||
+      !std::isfinite(static_cast<double>(result.number))) {
+    reportError("LET numeric values must be finite.");
+    return false;
+  }
+  result.kind = ScalarValue::Kind::NUMERIC;
+  return true;
+}
+
+std::string SemanticAnalyzer::encodeScalarValue(
+    const ScalarValue &value) const {
+  if (value.kind == ScalarValue::Kind::STRING)
+    return "\"" + value.text + "\"";
+
+  const long double normalized = value.number == 0.0L ? 0.0L : value.number;
+  std::ostringstream output;
+  output << std::setprecision(std::numeric_limits<long double>::digits10)
+         << normalized;
+  if (!value.unit.empty())
+    output << " " << value.unit;
+  return output.str();
+}
+
+bool SemanticAnalyzer::evaluateScalarExpression(
+    const ScalarExprNode *expression, ScalarValue &result) {
+  if (!expression)
+    return false;
+
+  if (expression->kind == ScalarExprNode::Kind::LITERAL) {
+    if (expression->value.size() >= 2 && expression->value.front() == '"' &&
+        expression->value.back() == '"') {
+      result.kind = ScalarValue::Kind::STRING;
+      result.text = expression->value.substr(1, expression->value.size() - 2);
+      result.unit.clear();
+      return true;
+    }
+    if (!decodeScalarValue(expression->value, result))
+      return false;
+    if (expression->unit == "KB") {
+      result.number *= 1000.0L;
+      result.unit = "BP";
+    } else if (expression->unit == "MB") {
+      result.number *= 1000000.0L;
+      result.unit = "BP";
+    } else {
+      result.unit = expression->unit;
+    }
+    if (!std::isfinite(static_cast<double>(result.number))) {
+      reportError("LET numeric values must be finite.");
+      return false;
+    }
+    return true;
+  }
+
+  if (expression->kind == ScalarExprNode::Kind::REFERENCE) {
+    if (!validateConstantReference(expression->value))
+      return false;
+    return decodeScalarValue(resolveConstant(expression->value), result);
+  }
+
+  ScalarValue left;
+  if (!evaluateScalarExpression(expression->left.get(), left))
+    return false;
+
+  if (expression->kind == ScalarExprNode::Kind::UNARY) {
+    if (left.kind != ScalarValue::Kind::NUMERIC) {
+      reportError("Unary '" + expression->op +
+                  "' requires a numeric scalar.");
+      return false;
+    }
+    if (expression->op == "-")
+      left.number = -left.number;
+    result = left;
+    return true;
+  }
+
+  ScalarValue right;
+  if (!evaluateScalarExpression(expression->right.get(), right))
+    return false;
+
+  if (expression->op == "+" &&
+      left.kind == ScalarValue::Kind::STRING &&
+      right.kind == ScalarValue::Kind::STRING) {
+    result.kind = ScalarValue::Kind::STRING;
+    result.text = left.text + right.text;
+    result.unit.clear();
+    return true;
+  }
+  if (left.kind != ScalarValue::Kind::NUMERIC ||
+      right.kind != ScalarValue::Kind::NUMERIC) {
+    reportError("Operator '" + expression->op +
+                "' requires two numeric values, or two strings for '+'.");
+    return false;
+  }
+
+  result.kind = ScalarValue::Kind::NUMERIC;
+  if (expression->op == "+" || expression->op == "-") {
+    if (left.unit != right.unit) {
+      reportError("Operator '" + expression->op +
+                  "' requires compatible scalar units.");
+      return false;
+    }
+    result.number = expression->op == "+" ? left.number + right.number
+                                            : left.number - right.number;
+    result.unit = left.unit;
+  } else if (expression->op == "*") {
+    if (!left.unit.empty() && !right.unit.empty()) {
+      reportError("Operator '*' accepts at most one unit-bearing operand.");
+      return false;
+    }
+    result.number = left.number * right.number;
+    result.unit = left.unit.empty() ? right.unit : left.unit;
+  } else {
+    if (right.number == 0.0L) {
+      reportError("Division by zero in LET expression.");
+      return false;
+    }
+    if (right.unit.empty()) {
+      result.unit = left.unit;
+    } else if (!left.unit.empty() && left.unit == right.unit) {
+      result.unit.clear();
+    } else {
+      reportError("Operator '/' requires a unitless divisor or compatible "
+                  "units.");
+      return false;
+    }
+    result.number = left.number / right.number;
+  }
+
+  if (!std::isfinite(static_cast<double>(result.number))) {
+    reportError("LET numeric values must be finite.");
+    return false;
+  }
+  return true;
+}
+
 void SemanticAnalyzer::analyze(ProgramNode *node) {
   if (node) {
     node->accept(*this);
@@ -194,15 +353,11 @@ void SemanticAnalyzer::visit(LetStmtNode *node) {
     reportError("Alias '" + node->name + "' is already defined.");
     return;
   }
-  const bool isString = node->value.size() >= 2 &&
-                        node->value.front() == '"' &&
-                        node->value.back() == '"';
-  if (!isString) {
-    const double numeric = std::strtod(node->value.c_str(), nullptr);
-    if (!std::isfinite(numeric)) {
-      reportError("LET numeric values must be finite.");
-    }
-  }
+  ScalarValue value;
+  if (!evaluateScalarExpression(node->expression.get(), value))
+    return;
+  node->value = encodeScalarValue(value);
+  const bool isString = value.kind == ScalarValue::Kind::STRING;
   symbolTable.insert(node->name,
                      isString ? "STRING_CONSTANT" : "NUMERIC_CONSTANT");
   constantValues[node->name] = node->value;

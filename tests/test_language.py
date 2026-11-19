@@ -1212,20 +1212,25 @@ def main() -> int:
         data, _ = run_query(
             workspace,
             "scalar_constants",
-            'LET start_pattern = "ATG";\n'
-            'LET minimum_length = 3 BP;\n'
-            'LET minimum_start = 3;\n'
-            'LET frame_width = 3;\n'
-            'LET maximum_gc = 100 %;\n'
+            'LET start_prefix = "AT";\n'
+            'LET start_pattern = start_prefix + "G";\n'
+            'LET codon_width = 3;\n'
+            'LET minimum_length = codon_width * 1 BP;\n'
+            'LET unit_ratio = 1 KB / 500 BP;\n'
+            'LET minimum_start = (codon_width + 3) / unit_ratio;\n'
+            'LET frame_width = codon_width;\n'
+            'LET maximum_gc = 50 % + 50 %;\n'
             'LET positive_strand = "+";\n'
             'LET first_base = 0;\n'
-            'LET first_codon_end = 3;\n'
-            'LET search_radius = 12 BP;\n'
+            'LET first_codon_end = first_base + codon_width;\n'
+            'LET expected_end = 3 + codon_width * 4;\n'
+            'LET search_radius = 0.01 KB + 2 BP;\n'
             'LOAD SEQUENCE "reading_frame.fasta" AS genome;\n'
             'FIND MOTIF start_pattern STRAND POSITIVE AS starts '
             'WHERE LENGTH >= minimum_length '
             'AND START >= minimum_start '
             'AND START MOD frame_width = 0 '
+            'AND END = expected_end '
             'AND GC_CONTENT <= maximum_gc '
             'AND STRAND = positive_strand;\n'
             'EXTRACT starts AS confirmed '
@@ -1759,6 +1764,61 @@ def main() -> int:
         )
         require("SLICE bounds must be whole indices" in semantic_error,
                 "SLICE bounds reject unit-bearing constants")
+
+        semantic_error = run_invalid_query(
+            workspace,
+            "incompatible_scalar_units",
+            'LET invalid = 1 BP + 1 %;\n',
+            3,
+        )
+        require("requires compatible scalar units" in semantic_error,
+                "scalar addition rejects incompatible dimensions")
+
+        semantic_error = run_invalid_query(
+            workspace,
+            "unit_product",
+            'LET invalid = 2 BP * 3 KB;\n',
+            3,
+        )
+        require("at most one unit-bearing operand" in semantic_error,
+                "scalar multiplication rejects derived dimensions")
+
+        semantic_error = run_invalid_query(
+            workspace,
+            "scalar_division_by_zero",
+            'LET invalid = 10 BP / (3 - 3);\n',
+            3,
+        )
+        require("Division by zero" in semantic_error,
+                "scalar expressions reject division by zero")
+
+        semantic_error = run_invalid_query(
+            workspace,
+            "mixed_scalar_types",
+            'LET invalid = "ATG" + 3;\n',
+            3,
+        )
+        require("two numeric values, or two strings" in semantic_error,
+                "scalar expressions reject mixed string and numeric values")
+
+        semantic_error = run_invalid_query(
+            workspace,
+            "forward_scalar_reference",
+            'LET invalid = later + 1;\n'
+            'LET later = 2;\n',
+            3,
+        )
+        require("Scalar constant 'later' is not defined" in semantic_error,
+                "scalar expressions require prior declarations")
+
+        semantic_error = run_invalid_query(
+            workspace,
+            "non_finite_scalar_expression",
+            'LET invalid = 1e999 * 2;\n',
+            3,
+        )
+        require("LET numeric values must be finite" in semantic_error,
+                "scalar expressions reject non-finite results")
 
         data, _ = run_query(
             workspace,

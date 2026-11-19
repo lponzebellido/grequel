@@ -18,6 +18,9 @@ private:
   int bufferLen;
   bool eofReached;
   bool hasError;
+  bool pendingSlash;
+  int pendingSlashLine;
+  int pendingSlashColumn;
   std::unordered_map<std::string, TokenType> keywords;
   void initKeywords();
   char getChar();

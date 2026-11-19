@@ -161,16 +161,19 @@ USE SEQUENCE genome;
 USE ANNOTATION annot;
 ```
 
-### 1.1 Reusable scalar constants (`LET`)
+### 1.1 Scalar expressions (`LET`)
 
 Declare immutable string or numeric values once and reuse them in motif
 operands, conditions, slices, and distance clauses:
 
 ```sql
-LET promoter_pattern = "TATA[AT]A[AT]";
-LET search_radius = 250 BP;
+LET left = "TATA";
+LET right = "[AT]A[AT]";
+LET promoter_pattern = left + right;
+LET half_window = 125 BP;
+LET search_radius = half_window * 2;
 LET prefix_start = 0;
-LET prefix_end = 4;
+LET prefix_end = 2 + 2;
 
 FIND MOTIF promoter_pattern
     WITHIN search_radius UPSTREAM FROM GENE
@@ -178,15 +181,26 @@ FIND MOTIF promoter_pattern
     WHERE SLICE ORIENTED_SEQUENCE FROM prefix_start TO prefix_end = "TATA";
 ```
 
-Constants are top-level declarations and must appear before use. Numeric
-constants retain their optional `BP`, `KB`, `MB`, or `%` unit; the property
-using the constant still enforces its normal type and unit rules. Constants do
-not perform textual macro expansion and cannot be redefined. They are accepted
-as motif operands, condition values, `MOD` divisors, `SLICE` bounds, analysis
-windows, and genomic distances in `FIND`, `DEFINE PROMOTERS`, `DEFINE MODULE`,
-`NEAR`, and `CONSENSUS`. A distance clause that normally requires a unit also
-requires its constant to supply one, either in the declaration or at the use
-site; slice bounds must resolve to unitless whole numbers.
+Constants are top-level declarations and must appear before use. `LET`
+expressions support unary `+` and `-`, binary `+`, `-`, `*`, and `/`, and
+parentheses with ordinary arithmetic precedence. String `+` concatenates two
+strings; no other string arithmetic or implicit string-number conversion is
+performed. Expressions are currently declared on the right side of `LET`; the
+resulting name is then used by query clauses.
+
+Numeric expressions retain dimensional information. `BP`, `KB`, and `MB` are
+converted to a common base-pair value before compatible addition, subtraction,
+or division. Percentages are compatible only with percentages. Multiplication
+accepts at most one unit-bearing operand; division accepts a unitless divisor
+or equal dimensions, in which case its result is unitless. Division by zero,
+non-finite results, forward references, and incompatible units are errors.
+
+Constants do not perform textual macro expansion and cannot be redefined. They
+are accepted as motif operands, condition values, `MOD` divisors, `SLICE`
+bounds, analysis windows, and genomic distances in `FIND`, `DEFINE PROMOTERS`,
+`DEFINE MODULE`, `NEAR`, and `CONSENSUS`. A distance clause that normally
+requires a unit also requires its expression to produce one; slice bounds must
+resolve to unitless whole numbers.
 
 ### 2. Motif Searching & Spatial Conditions (`FIND MOTIF`)
 
@@ -587,9 +601,13 @@ UseStmt            ::= USE (SEQUENCE | ANNOTATION) ID SEMICOLON
 ValidateStmt       ::= VALIDATE ANNOTATION ID AS ID SEMICOLON
 GroupStmt          ::= GROUP ID BY ID AS ID SEMICOLON
 ExportStmt         ::= EXPORT ID TO STRING FORMAT (BED | GFF3 | TSV) SEMICOLON
-LetStmt            ::= LET ID "=" ScalarLiteral SEMICOLON
-ScalarLiteral      ::= STRING | ("-")? (NUM | FLOAT) Unit
-                     | ("-")? (NUM | FLOAT) PERCENT
+LetStmt            ::= LET ID "=" ScalarExpression SEMICOLON
+ScalarExpression   ::= ScalarTerm (("+" | "-") ScalarTerm)*
+ScalarTerm         ::= ScalarUnary (("*" | "/") ScalarUnary)*
+ScalarUnary        ::= ("+" | "-") ScalarUnary | ScalarPrimary
+ScalarPrimary      ::= ScalarLiteral | ID | "(" ScalarExpression ")"
+ScalarLiteral      ::= STRING | (NUM | FLOAT) Unit
+                     | (NUM | FLOAT) PERCENT
 DistanceOperand    ::= (NUM | FLOAT) RequiredUnit | ID RequiredUnit?
 OptionalDistance  ::= (NUM | FLOAT) Unit | ID Unit
 DefinePromotersStmt ::= DEFINE PROMOTERS OF (GENE | TSS | ID) FROM TSS
@@ -742,7 +760,7 @@ track, transcript, and strand examples use small synthetic fixtures. See
 | `15_strands.grql` | Compare reference and strand-oriented sequence | `SEQUENCE`, `ORIENTED_SEQUENCE` |
 | `16_translate.grql` | Translate intervals under two genetic codes | `TRANSLATE`, `PROTEIN_SEQUENCE` |
 | `17_captures.grql` | Name and filter regular-expression groups | `CAPTURES`, `CAPTURE` |
-| `18_constants.grql` | Reuse patterns, thresholds, and slice bounds | `LET` |
+| `18_constants.grql` | Compose strings and numeric values | `LET` expressions |
 
 ---
 
